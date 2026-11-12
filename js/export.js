@@ -65,6 +65,17 @@
       stage.remove();
     }
     const safe = (fileName || 'presentacion').replace(/[\\/:*?"<>|]+/g, '').slice(0, 80) || 'presentacion';
+    // Dentro del visor de claude.ai las descargas pasan por la capacidad «downloads»
+    const dl = window.claude && window.claude.use ? await window.claude.use('downloads').catch(() => null) : null;
+    if (dl) {
+      try {
+        await dl.save({ filename: safe + '.pdf', data: pdf.output('blob') });
+      } catch (e) {
+        if (e && e.code === 'declined') throw Object.assign(new Error('Descarga cancelada.'), { declined: true });
+        throw new Error(e && e.message ? e.message : 'La descarga no está disponible aquí.');
+      }
+      return;
+    }
     pdf.save(safe + '.pdf');
   };
 

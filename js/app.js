@@ -601,7 +601,8 @@
       toast('Tu presentación se descargó en PDF.');
     } catch (err) {
       console.error(err);
-      toast('No se pudo generar el PDF: ' + err.message, 'err', 6000);
+      if (err.declined) { $('#exp-progress').classList.add('hidden'); toast('Descarga cancelada.', 'err', 2500); }
+      else toast('No se pudo generar el PDF: ' + err.message, 'err', 6000);
     } finally {
       $('#exp-go').disabled = false;
     }

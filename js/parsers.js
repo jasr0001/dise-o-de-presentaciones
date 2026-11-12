@@ -479,13 +479,18 @@
   async function parseImage(file, onProgress) {
     await loadScript('vendor/tesseract/tesseract.min.js');
     const abs = (p) => new URL(p, location.href).href;
-    const worker = await window.Tesseract.createWorker('spa+eng', 1, {
+    const base = {
       workerPath: abs('vendor/tesseract/worker.min.js'),
       corePath: abs('vendor/tesseract/'),
-      langPath: abs('vendor/tesseract/lang'),
-      gzip: true,
       logger: (m) => { if (m.status === 'recognizing text' && onProgress) onProgress(m.progress); }
-    });
+    };
+    let worker;
+    try {
+      worker = await window.Tesseract.createWorker('spa+eng', 1, { ...base, langPath: abs('vendor/tesseract/lang'), gzip: true });
+    } catch (e) {
+      // Si los datos de idioma locales no están disponibles, usa los oficiales de Tesseract
+      worker = await window.Tesseract.createWorker('spa+eng', 1, base);
+    }
     try {
       const res = await worker.recognize(file);
       return { title: '', blocks: ocrToBlocks(res.data) };
@@ -553,7 +558,7 @@
     if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder('utf-16le').decode(bytes);
     if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder('utf-16be').decode(bytes);
     const utf8 = new TextDecoder('utf-8').decode(bytes);
-    if ((utf8.match(/�/g) || []).length > 3) return new TextDecoder('windows-1252').decode(bytes);
+    if ((utf8.match(/\uFFFD/g) || []).length > 3) return new TextDecoder('windows-1252').decode(bytes);
     return utf8;
   }
 
