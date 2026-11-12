@@ -37,7 +37,7 @@
     if (letters.length >= 4 && letters === letters.toUpperCase()) return true;
     if (/:$/.test(t) && words.length <= 6) return true;
     // Línea corta seguida de un párrafo largo
-    if (next && next.trim().length > 120 && words.length <= 8 && /^\p{Lu}/u.test(t)) return true;
+    if (next && next.trim().length > 50 && words.length <= 8 && /^\p{Lu}/u.test(t) && t.length < next.trim().length * 0.7) return true;
     return false;
   }
 
@@ -477,11 +477,52 @@
 
   /* ---------- Imagen (OCR) ---------- */
   async function parseImage(file, onProgress) {
-    await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js');
-    const res = await window.Tesseract.recognize(file, 'spa+eng', {
+    await loadScript('vendor/tesseract/tesseract.min.js');
+    const abs = (p) => new URL(p, location.href).href;
+    const worker = await window.Tesseract.createWorker('spa+eng', 1, {
+      workerPath: abs('vendor/tesseract/worker.min.js'),
+      corePath: abs('vendor/tesseract/'),
+      langPath: abs('vendor/tesseract/lang'),
+      gzip: true,
       logger: (m) => { if (m.status === 'recognizing text' && onProgress) onProgress(m.progress); }
     });
-    return { title: '', blocks: plainToBlocks(res.data.text) };
+    try {
+      const res = await worker.recognize(file);
+      return { title: '', blocks: ocrToBlocks(res.data) };
+    } finally {
+      worker.terminate();
+    }
+  }
+
+  /* Usa la geometría de las líneas del OCR para distinguir títulos y párrafos */
+  function ocrToBlocks(data) {
+    const lines = (data.lines || []).map((l) => ({ text: clean(l.text), y0: l.bbox.y0, y1: l.bbox.y1, h: l.bbox.y1 - l.bbox.y0, conf: l.confidence }))
+      .filter((l) => l.text && l.conf > 35);
+    if (lines.length < 2) return plainToBlocks(data.text || '');
+    const hs = lines.map((l) => l.h).sort((a, b) => a - b);
+    const med = hs[Math.floor(hs.length / 2)] || 10;
+    const blocks = [];
+    let para = [], prev = null;
+    const flush = () => { if (para.length) blocks.push({ type: 'para', text: clean(para.join('\n').replace(/(\p{L})-\n(\p{Ll})/gu, '$1$2').replace(/\n/g, ' ')) }); para = []; };
+    lines.forEach((l) => {
+      const t = l.text.replace(/^[^\p{L}\d"“¿¡(]+/u, '').replace(/^\d\s+(?=\p{Lu}\p{Ll})/u, '');
+      const words = t.split(/\s+/).length;
+      if (l.h >= med * 1.22 && words <= 14 && !/[.;,]$/.test(t)) {
+        flush();
+        const last = blocks[blocks.length - 1];
+        if (last && last.type === 'heading' && prev && prev.isHead && l.y0 - prev.y1 < med * 0.8) last.text += ' ' + t;
+        else blocks.push({ type: 'heading', level: l.h >= med * 1.6 ? 1 : 2, text: t });
+        prev = { ...l, isHead: true };
+        return;
+      }
+      if (prev && !prev.isHead && l.y0 - prev.y1 > med * 0.9) flush();
+      para.push(t);
+      prev = l;
+    });
+    flush();
+    return blocks
+      .filter((b) => (b.text.match(/\p{L}/gu) || []).length >= 3)
+      .map((b) => (b.type === 'para' && b.text.split(/\s+/).length <= 6 && !/[.;,:!?]$/.test(b.text) && /^\p{Lu}/u.test(b.text) ? { type: 'heading', level: 2, text: b.text } : b));
   }
 
   /* ---------- JSON / CSV ---------- */

@@ -11,7 +11,25 @@ python3 -m http.server 8080
 # y abre http://localhost:8080
 ```
 
-(También puede publicarse tal cual en GitHub Pages, Netlify, Vercel, etc.)
+### Publicar en GitHub Pages
+
+El repositorio incluye el flujo `.github/workflows/pages.yml`, que publica el sitio automáticamente cada vez que hay cambios en `main`.
+
+1. Fusiona esta rama en `main`.
+2. En GitHub: **Settings → Pages → Build and deployment → Source: «GitHub Actions»** (solo la primera vez).
+3. La página quedará en `https://<usuario>.github.io/dise-o-de-presentaciones/`.
+
+También funciona tal cual en Netlify, Vercel o cualquier hosting estático.
+
+### Totalmente autónoma
+
+Todo lo necesario está dentro del repositorio, sin depender de servicios externos:
+
+- Librerías de lectura y exportación en `vendor/` (pdf.js, mammoth, JSZip, html2canvas, jsPDF).
+- Reconocimiento de texto en imágenes (Tesseract) con los idiomas español e inglés en `vendor/tesseract/`.
+- Las 21 familias tipográficas alojadas en `fonts/` (Google Fonts, licencia SIL OFL).
+- `sw.js` hace que la app funcione **sin conexión** después de la primera visita, y `manifest.webmanifest` permite **instalarla** como aplicación en el móvil o el escritorio.
+- Vista previa para redes sociales (`assets/og-image.png`) e iconos.
 
 ## Flujo
 
@@ -24,7 +42,7 @@ python3 -m http.server 8080
 
 ## Formatos admitidos
 
-PDF, DOCX/DOCM/DOTX, DOC (extracción heurística), PPTX, ODT/ODP/ODS, EPUB, RTF, TXT, Markdown, HTML/XHTML, XML, JSON, CSV/TSV, XLSX e imágenes (PNG, JPG, WEBP, BMP, GIF, TIFF) mediante OCR (Tesseract, se descarga solo al usarlo).
+PDF, DOCX/DOCM/DOTX, DOC (extracción heurística), PPTX, ODT/ODP/ODS, EPUB, RTF, TXT, Markdown, HTML/XHTML, XML, JSON, CSV/TSV, XLSX e imágenes (PNG, JPG, WEBP, BMP, GIF, TIFF) mediante OCR, que distingue títulos y párrafos por el tamaño de las líneas.
 
 ## Qué hace el motor de análisis (`js/analyzer.js`)
 
@@ -49,5 +67,8 @@ js/themes.js        Plantillas, paletas, tipografías, decoraciones
 js/export.js        Exportación a PDF
 js/app.js           Lógica de la interfaz
 js/sample.js        Documento de ejemplo
-vendor/             pdf.js, mammoth, JSZip, html2canvas, jsPDF (incluidas localmente)
+vendor/             pdf.js, mammoth, JSZip, html2canvas, jsPDF, Tesseract (incluidas localmente)
+fonts/, css/fonts.css  Tipografías locales
+sw.js, manifest.webmanifest  Modo sin conexión e instalación
+.github/workflows/pages.yml  Publicación automática en GitHub Pages
 ```

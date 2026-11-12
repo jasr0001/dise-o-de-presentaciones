@@ -316,6 +316,17 @@
       used.add(k.stem); parts.forEach((p) => used.add(p));
       return true;
     }).slice(0, 24);
+    // Respeta las mayúsculas originales (nombres propios: «América Latina»)
+    keywords.forEach((k) => {
+      const re = new RegExp('(^|[^\\p{L}])(' + k.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?=[^\\p{L}]|$)', 'giu');
+      const forms = {};
+      let m, n = 0;
+      while ((m = re.exec(fullText)) && n++ < 60) forms[m[2]] = (forms[m[2]] || 0) + 1;
+      const total = Object.values(forms).reduce((a, b) => a + b, 0);
+      const caps = Object.entries(forms).filter(([f]) => /^\p{Lu}/u.test(f) && f.split(' ').every((w) => /^\p{Lu}/u.test(w)));
+      const capCount = caps.reduce((a, [, c]) => a + c, 0);
+      if (caps.length && capCount >= total * 0.6) k.term = caps.sort((a, b) => b[1] - a[1])[0][0];
+    });
     const kwMax = keywords[0]?.w || 1;
     keywords.forEach((k) => (k.w = k.w / kwMax));
 

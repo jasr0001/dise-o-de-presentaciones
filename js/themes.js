@@ -120,24 +120,15 @@
   };
 
   /* ---------- Carga de fuentes ---------- */
+  // Las fuentes están alojadas localmente en /fonts (css/fonts.css); aquí solo esperamos a que carguen
   const loadedFonts = {};
   PD.loadFont = (font) => {
     if (loadedFonts[font.id]) return loadedFonts[font.id];
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = `https://fonts.googleapis.com/css2?${font.q}&display=swap`;
-    document.head.appendChild(link);
-    loadedFonts[font.id] = new Promise((resolve) => {
-      const done = () => {
-        const tests = [`700 40px '${font.head}'`, `400 20px '${font.body}'`, `600 20px '${font.body}'`];
-        Promise.all(tests.map((t) => document.fonts.load(t).catch(() => null)))
-          .then(() => resolve(true))
-          .catch(() => resolve(false));
-      };
-      link.onload = done;
-      link.onerror = () => resolve(false);
-      setTimeout(() => resolve(false), 6000);
-    });
+    const tests = [`700 40px '${font.head}'`, `400 40px '${font.head}'`, `400 20px '${font.body}'`, `600 20px '${font.body}'`, `700 20px '${font.body}'`];
+    loadedFonts[font.id] = Promise.race([
+      Promise.all(tests.map((t) => document.fonts.load(t).catch(() => null))).then(() => true),
+      new Promise((r) => setTimeout(() => r(false), 6000))
+    ]);
     return loadedFonts[font.id];
   };
 
