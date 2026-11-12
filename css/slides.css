@@ -23,9 +23,9 @@
 .slide ul, .slide ol { list-style: none; }
 .s-deco { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .s-inner { position: absolute; inset: 70px 96px 78px; display: flex; flex-direction: column; z-index: 2; }
-.s-inner.center-v { justify-content: center; }
+.s-inner.center-v { justify-content: safe center; }
 .s-head { flex: none; margin-bottom: 30px; }
-.s-body { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; }
+.s-body { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: safe center; }
 .s-kicker { font-family: var(--font-body); font-size: 15px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--accent-text); margin-bottom: 12px; }
 .s-title { font-family: var(--font-head); font-weight: 700; color: var(--ink); line-height: 1.08; letter-spacing: -.015em; font-size: 50px; }
 .s-title.t-m { font-size: 44px; } .s-title.t-l { font-size: 38px; } .s-title.t-xl { font-size: 32px; }

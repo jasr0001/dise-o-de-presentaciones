@@ -193,12 +193,16 @@
     const lib = window.pdfjsLib;
     lib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
     let pdf;
+    const bytes = new Uint8Array(buf);
     try {
-      pdf = await lib.getDocument({ data: buf }).promise;
+      // pdf.js se queda con el búfer que recibe: le pasamos una copia para poder reintentar
+      pdf = await lib.getDocument({ data: bytes.slice() }).promise;
     } catch (e) {
+      if (e && e.name === 'PasswordException') throw new Error('El PDF está protegido con contraseña. Quita la protección y vuelve a subirlo.');
+      console.warn('pdf.js: reintento sin worker', e);
       // Sin worker (p. ej. abierto como file://): carga el worker en el hilo principal
       await loadScript('vendor/pdf.worker.min.js');
-      pdf = await lib.getDocument({ data: buf.slice ? buf.slice(0) : buf }).promise;
+      pdf = await lib.getDocument({ data: bytes.slice() }).promise;
     }
     let meta = {};
     try { meta = (await pdf.getMetadata()).info || {}; } catch (e) { /* sin metadatos */ }

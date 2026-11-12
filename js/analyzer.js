@@ -6,8 +6,8 @@
   'use strict';
   const PD = (window.PD = window.PD || {});
 
-  const STOP_ES = 'a al algo algunas algunos ante antes como con contra cual cuales cuando de del desde donde dos el ella ellas ellos en entre era eran es esa esas ese eso esos esta estas este esto estos fue fueron ha han hasta hay la las le les lo los mas más me mi mis muy ni no nos o os otra otras otro otros para pero poco por porque que qué quien quienes se sea sean ser si sí sin sobre son su sus también tan tanto te tiene tienen todo todos tu tus un una unas uno unos y ya yo así cada aunque mismo misma mismos sido siendo puede pueden según solo sólo además donde dentro durante mediante tras hacia esto estas estos aquí allí bien cómo cuál cuándo dónde había habían hace hacen hacer debe deben forma parte vez veces gran grandes mayor menor mejor otro través sino lugar caso casos tipo manera modo general así decir dicho nuevo nueva ello ella tal tales sus nuestra nuestro nuestros nuestras usted ustedes él estar está están estaba estaban será serán podría podrían tener tenía haber hemos he'.split(' ');
-  const STOP_EN = 'a about above after again against all am an and any are as at be because been before being below between both but by can could did do does doing down during each few for from further had has have having he her here hers him his how i if in into is it its itself just me more most my no nor not of off on once only or other our ours out over own same she should so some such than that the their theirs them then there these they this those through to too under until up very was we were what when where which while who whom why will with would you your also may might must shall however thus therefore within without upon among per via et al use used using one two new many much well like'.split(' ');
+  const STOP_ES = 'a al algo algunas algunos ante antes como con contra cual cuales cuando de del desde donde dos el ella ellas ellos en entre era eran es esa esas ese eso esos esta estas este esto estos fue fueron ha han hasta hay la las le les lo los mas más me mi mis muy ni no nos o os otra otras otro otros para pero poco por porque que qué quien quienes se sea sean ser si sí sin sobre son su sus también tan tanto te tiene tienen todo todos tu tus un una unas uno unos y ya yo así cada aunque mismo misma mismos sido siendo puede pueden según solo sólo además donde dentro durante mediante tras hacia esto estas estos aquí allí bien cómo cuál cuándo dónde había habían hace hacen hacer debe deben forma parte vez veces gran grandes mayor menor mejor otro través sino lugar caso casos tipo manera modo general así decir dicho nuevo nueva ello ella tal tales sus nuestra nuestro nuestros nuestras usted ustedes él estar está están estaba estaban será serán podría podrían tener tenía haber hemos he incluye incluyen incluidos incluidas mediante respecto través cuyo cuya cuyos cuyas'.split(' ');
+  const STOP_EN = 'a about above after again against all am an and any are as at be because been before being below between both but by can could did do does doing down during each few for from further had has have having he her here hers him his how i if in into is it its itself just me more most my no nor not of off on once only or other our ours out over own same she should so some such than that the their theirs them then there these they this those through to too under until up very was we were what when where which while who whom why will with would you your also may might must shall however thus therefore within without upon among per via et al use used using one two new many much well like including include includes included extracted reported conducted performed identified based compared showed shown found regarding across among total number whether although overall either neither respectively'.split(' ');
   const STOP = new Set([...STOP_ES, ...STOP_EN]);
 
   const ABBR = ['Sr', 'Sra', 'Srta', 'Dr', 'Dra', 'Ing', 'Lic', 'Prof', 'etc', 'p. ej', 'ej', 'pág', 'págs', 'núm', 'vol', 'cap', 'fig', 'figs', 'aprox', 'EE. UU', 'U.S', 'e.g', 'i.e', 'vs', 'Mr', 'Mrs', 'Ms', 'Jr', 'St', 'No', 'al', 'cf', 'approx', 'Fig', 'Eq', 'Ref', 'Inc', 'Ltd', 'Co', 'Corp', 'S.A', 'Av', 'Univ', 'Dept', 'ed', 'eds'];
@@ -56,6 +56,47 @@
     return parts.map((s) => s.replace(/§/g, '.').trim()).filter((s) => wordCount(s) >= 4 && /\p{L}{3}/u.test(s));
   }
   PD.splitSentences = splitSentences;
+
+  /* Quita subtítulos «en línea» pegados al inicio de la frase (habitual en PDF):
+     «General study characteristics The general study characteristics…» → «The general study…»
+     «Concept definitions Definitions for…» → «Definitions for…» */
+  function stripRunIn(t) {
+    const w = t.split(' ');
+    const n = (x) => (x || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+    for (let k = 1; k <= 6 && k < w.length - 3; k++) {
+      const next = w[k];
+      if (!/^\p{Lu}/u.test(next)) continue;
+      if (/[.:;,!?]$/.test(w[k - 1])) break;
+      const head = w.slice(0, k).map(n);
+      // repetición del subtítulo justo después (con o sin artículo)
+      const off = /^(the|a|an|el|la|los|las|un|una)$/i.test(next) ? k + 1 : k;
+      const rep = w.slice(off, off + k).map(n);
+      if (k >= 2 && rep.join(' ') === head.join(' ')) return w.slice(k).join(' ');
+      // la palabra siguiente repite la última del subtítulo («definitions Definitions»)
+      if (k >= 2 && n(next).replace(/s$/, '') === head[k - 1].replace(/s$/, '')) return w.slice(k).join(' ');
+    }
+    // Subtítulo en negrita pegado al párrafo: «Design and registration A scoping review…», «Definitions Inguinal hernia…»
+    const LABELS = /^(definitions?|methods?|results?|background|objectives?|aims?|purpose|conclusions?|limitations?|outcomes?|participants?|interventions?|design|setting|findings|introduction|summary|definici[oó]n(es)?|m[eé]todos?|resultados?|antecedentes|objetivos?|conclusi[oó]n(es)?|limitaciones|participantes|intervenci[oó]n(es)?|dise[nñ]o|contexto|introducci[oó]n|hallazgos|resumen)$/i;
+    const JOIN = /^(and|of|or|for|y|e|o|u|de|del|para)$/i;
+    for (let k = 1; k <= 5 && k < w.length - 5; k++) {
+      const next = w[k];
+      const prefix = w.slice(0, k);
+      if (/[.:;,!?]$/.test(prefix[k - 1])) break;
+      if (!/^\p{Lu}(\p{Ll}|$)/u.test(next) || /^\p{Lu}{2,}/u.test(next)) continue;
+      if (!/^\p{Lu}\p{Ll}/u.test(prefix[0]) || STOP.has(prefix[0].toLowerCase())) break;
+      if (k === 1) { if (LABELS.test(n(prefix[0]))) return w.slice(1).join(' '); continue; }
+      const rest = prefix.slice(1);
+      if (rest.some((x) => !/^\p{Ll}/u.test(x))) break;
+      if (rest.some((x) => STOP.has(x.toLowerCase()) && !JOIN.test(x))) break;
+      if (JOIN.test(prefix[k - 1])) continue;
+      return w.slice(k).join(' ');
+    }
+    // «Key features of study design (PICO) Characteristics of…»
+    const m = t.match(/^([^.;:!?]{8,80}?\))\s+(\p{Lu}\p{Ll}+\b.*)$/u);
+    if (m && m[1].split(' ').length <= 10 && m[2].split(' ').length >= 4) return m[2];
+    return t;
+  }
+  PD.stripRunIn = stripRunIn;
 
   /* ---------- Compresión de frases a viñetas ---------- */
   function compress(sentence, maxWords, opts = {}) {
@@ -212,6 +253,7 @@
         if (b.type === 'sub') { sub = b.text; s.subs.push(b.text); return; }
         if (b.type === 'para') {
           splitSentences(b.text).forEach((t, k) => {
+            for (let r = 0; r < 3; r++) { const u = stripRunIn(t); if (u === t) break; t = u; }
             const o = { text: t, section: si, sub, firstInPara: k === 0, pos: s.sentences.length };
             s.sentences.push(o); allSentences.push(o);
           });
@@ -352,7 +394,16 @@
     const stats = [];
     const statRe = /(?:(?:US)?\$|€|£)\s?\d[\d.,]*\s?(?:millones|mil millones|billones|millón|millon|mil|million|billion|bn|M|k)?|\b\d{1,3}(?:[.,]\d+)?\s?%|\b\d[\d.,]*\s?(?:millones|mil millones|millón|billones|million|billion|veces|times|x)\b|\b\d[\d.,]*\s?(?:km|kg|toneladas|tons?|MW|GW|kWh|TWh|°C|grados|años|years|horas|hours|días|days|personas|people|usuarios|users|empresas|companies|países|countries|pacientes|patients|proyectos|projects|empleos|jobs)\b|\b\d{1,3}(?:[.,]\d{3})+\b/gi;
     allSentences.forEach((x) => {
-      const m = x.text.match(statRe);
+      // Rangos («from 23% to 72%», «entre 10 y 20 %», «23–72%») se tratan como una sola cifra
+      const rng = x.text.match(/\b(?:from|between|de|del|entre)?\s*(\d{1,3}(?:[.,]\d+)?)\s?%?\s?(?:to|and|a|al|y|–|-)\s?(\d{1,3}(?:[.,]\d+)?)\s?%/i);
+      let text = x.text;
+      if (rng) {
+        const val = `${rng[1]}–${rng[2]}%`;
+        let label = compress(x.text, 13).replace(/^(el|la|los|las|un|una|the|an?)\s+(?=(de|del|of)\b)/i, '').replace(/^(de|del|of)\s+/i, '');
+        if (wordCount(label) >= 3) stats.push({ value: val, label: cap(label), sentence: x.text, num: parseFloat(rng[2].replace(',', '.')), pct: true, range: true, score: x.score * 1.1, section: x.section });
+        text = x.text.replace(rng[0], ' ');
+      }
+      const m = text.match(statRe);
       if (!m) return;
       m.slice(0, 2).forEach((v) => {
         const value = v.trim().replace(/\s+%/, '%');
@@ -362,7 +413,10 @@
         // Etiqueta: cláusula que contiene la cifra, sin la cifra
         const clauses = x.text.split(/[;:]|,\s(?=(?:mientras|aunque|pero|while|whereas|but)\b)/);
         const clause = clauses.find((c) => c.includes(v.trim())) || x.text;
-        let label = clause.replace(v, ' ').replace(/\s+/g, ' ').replace(/^\s*(el|la|los|las|un|una|the|a|an|de|del|of)\s+(?=de\b|del\b|of\b)/i, '').replace(/^[\s,]*(de|del|of)\s+/i, '').trim();
+        const at = clause.indexOf(v);
+        const before = at >= 0 ? clause.slice(0, at).trim().split(/\s+/).filter(Boolean) : [];
+        // Solo se quita la cifra si abre la frase («El 40% de…», «20 million…»); si no, la frase queda completa
+        let label = before.length <= 2 ? clause.replace(v, ' ').replace(/\s+/g, ' ').replace(/^\s*(el|la|los|las|un|una|the|a|an|más de|over|more than|about|cerca de)\s+(?=de\b|del\b|of\b)/i, '').replace(/^[\s,]*(de|del|of)\s+/i, '').trim() : clause.trim();
         label = compress(label, 11).replace(/^(el|la|los|las|un|una|the|an?)\s+(?=(de|del|of)\b)/i, '').replace(/^(de|del|of)\s+/i, '');
         label = cap(label);
         if (wordCount(label) < 3) return;
@@ -398,7 +452,8 @@
     let qm;
     while ((qm = qre.exec(fullText))) quotes.push({ text: qm[1].trim(), author: qm[2] || '' });
     // Si no hay citas: la frase más potente como cita destacada
-    const pull = allSentences.filter((x) => { const w = wordCount(x.text); return w >= 12 && w <= 32 && !/\d{3,}/.test(x.text); }).sort((a, b) => b.score - a.score)[0];
+    const pullScore = (x) => x.score * (CUES.test(x.text) ? 1.35 : 1) * (sections[x.section] && (sections[x.section].isConclusion || sections[x.section].isAbstract) ? 1.3 : 1) * (/\d/.test(x.text) ? 0.85 : 1);
+    const pull = allSentences.filter((x) => { const w = wordCount(x.text); return w >= 12 && w <= 32 && !/\d{3,}/.test(x.text) && !x.isQuote; }).sort((a, b) => pullScore(b) - pullScore(a))[0];
 
     /* Definiciones / glosario */
     const defs = [];
@@ -436,7 +491,7 @@
     return {
       title: cap(title || (lang === 'es' ? 'Presentación' : 'Presentation')),
       subtitle,
-      author: parsed.author || '',
+      author: /^\(?(anonymous|unknown|desconocido|admin|user|usuario|author|autor)\)?$/i.test((parsed.author || '').trim()) ? '' : (parsed.author || ''),
       lang,
       labels: lab,
       sections,
