@@ -456,3 +456,5 @@ body.busy .lvl, body.busy #elements-grid, body.busy #deck-grid { opacity: .55; p
 .lp.sel { border-color: var(--ui-c); background: rgba(47, 216, 240, .12); color: var(--ui-text); box-shadow: 0 0 0 4px rgba(47, 216, 240, .12); }
 .lp .fl { font-size: 18px; line-height: 1; }
 body.busy .lang-pick { opacity: .55; pointer-events: none; }
+.lang-row.top { margin: 0 0 22px; padding: 16px; border-radius: 18px; background: rgba(47, 216, 240, .06); border: 1px solid rgba(47, 216, 240, .22); }
+.lang-row.top .mini-label { color: var(--ui-c); font-size: 12.5px; }

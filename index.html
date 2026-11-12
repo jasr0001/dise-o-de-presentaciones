@@ -14,9 +14,9 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="description" content="Convierte artículos, documentos, revistas y libros en presentaciones espectaculares. Elige plantilla, colores, tipografía y nivel de detalle, y descarga en PDF.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%237B5CF0'/%3E%3Cstop offset='1' stop-color='%2322D3EE'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Crect x='14' y='18' width='36' height='24' rx='4' fill='white'/%3E%3Crect x='20' y='46' width='24' height='4' rx='2' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/fonts.css?v=4">
-  <link rel="stylesheet" href="css/app.css?v=4">
-  <link rel="stylesheet" href="css/slides.css?v=4">
+  <link rel="stylesheet" href="css/fonts.css?v=5">
+  <link rel="stylesheet" href="css/app.css?v=5">
+  <link rel="stylesheet" href="css/slides.css?v=5">
 </head>
 <body>
   <canvas id="bg-canvas" aria-hidden="true"></canvas>
@@ -98,6 +98,10 @@
     <div class="panel active" data-panel="1">
       <div class="panel-grid one">
         <div class="glass upload-card">
+          <div class="lang-row top">
+            <span class="mini-label">¿En qué idioma quieres la presentación?</span>
+            <div class="lang-pick" role="group" aria-label="Idioma de la presentación"></div>
+          </div>
           <div class="tabs" role="tablist">
             <button class="tab active" data-tab="file">Subir archivo</button>
             <button class="tab" data-tab="paste">Pegar texto</button>
@@ -119,10 +123,6 @@
           <div class="tab-pane" data-pane="paste">
             <textarea id="paste-text" placeholder="Pega aquí el texto de tu artículo, informe o capítulo. Si usas Markdown (# Títulos), Lumina respetará la estructura."></textarea>
             <div class="row-end"><span class="hint" id="paste-count">0 palabras</span><button class="btn btn-primary" id="paste-go">Analizar texto</button></div>
-          </div>
-          <div class="lang-row">
-            <span class="mini-label">Idioma de la presentación</span>
-            <div class="lang-pick" role="group" aria-label="Idioma de la presentación"></div>
           </div>
           <div class="sample-row">
             <span>¿Sin documento a mano?</span>
@@ -345,15 +345,15 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <canvas id="confetti" aria-hidden="true"></canvas>
 
-  <script src="js/themes.js?v=4"></script>
-  <script src="js/parsers.js?v=4"></script>
-  <script src="js/analyzer.js?v=4"></script>
-  <script src="js/generator.js?v=4"></script>
-  <script src="js/render.js?v=4"></script>
-  <script src="js/translate.js?v=4"></script>
-  <script src="js/export.js?v=4"></script>
-  <script src="js/sample.js?v=4"></script>
-  <script src="js/app.js?v=4"></script>
+  <script src="js/themes.js?v=5"></script>
+  <script src="js/parsers.js?v=5"></script>
+  <script src="js/analyzer.js?v=5"></script>
+  <script src="js/generator.js?v=5"></script>
+  <script src="js/render.js?v=5"></script>
+  <script src="js/translate.js?v=5"></script>
+  <script src="js/export.js?v=5"></script>
+  <script src="js/sample.js?v=5"></script>
+  <script src="js/app.js?v=5"></script>
   <script>
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
