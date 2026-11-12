@@ -164,8 +164,8 @@
     let fs = 1;
     const over = () => body.scrollHeight > body.clientHeight + 1 || inner.scrollHeight > inner.clientHeight + 1 || body.scrollWidth > body.clientWidth + 2;
     let guard = 0;
-    while (over() && fs > 0.6 && guard++ < 14) {
-      fs -= 0.04;
+    while (over() && fs > 0.52 && guard++ < 24) {
+      fs -= 0.03;
       slide.style.setProperty('--fs', fs.toFixed(2));
     }
   };

@@ -17,6 +17,7 @@
     custom: null,
     font: prefs.font || 'moderna',
     level: prefs.level || 2,
+    outLang: prefs.outLang || 'es',
     elements: null,
     opts: { numbers: true, footer: true, emphasis: true, notes: true },
     meta: { title: '', subtitle: null, author: '', date: '' },
@@ -26,7 +27,7 @@
     dirty: false,
     undo: []
   };
-  const savePrefs = () => { try { localStorage.setItem('lumina-prefs', JSON.stringify({ tpl: state.tpl, palette: state.palette, font: state.font, level: state.level })); } catch (e) { /* opcional */ } };
+  const savePrefs = () => { try { localStorage.setItem('lumina-prefs', JSON.stringify({ tpl: state.tpl, palette: state.palette, font: state.font, level: state.level, outLang: state.outLang })); } catch (e) { /* opcional */ } };
 
   const theme = (over = {}) => {
     const tpl = over.tpl || state.tpl;
@@ -144,40 +145,54 @@
     const steps = $$('.ps', proc);
     steps.forEach((s) => s.classList.remove('run', 'ok'));
     const bar = $('#proc-bar');
-    const setStep = (k, pct) => {
+    const order = steps.map((s) => s.dataset.ps);
+    const setStep = (name, pct) => {
+      const k = order.indexOf(name);
       steps.forEach((s, i) => { s.classList.toggle('ok', i < k); s.classList.toggle('run', i === k); });
       bar.style.width = pct + '%';
     };
+    $('[data-ps="translate"]', proc).classList.add('hidden');
     const em = $('[data-ps="read"] em', proc);
     em.textContent = file && /^image\//.test(file.type) ? '(reconocimiento óptico de texto)' : '';
     try {
-      setStep(0, 8);
+      setStep('read', 8);
       const parsed = await parseFn((p) => { bar.style.width = (8 + p * 37).toFixed(0) + '%'; });
       await sleep(250);
-      setStep(1, 52);
+      setStep('struct', 45);
       if (!parsed.blocks || !parsed.blocks.some((b) => b.type === 'para' || b.type === 'list')) throw new Error('No se encontró texto legible en el documento. Si es un PDF escaneado, súbelo como imagen para aplicar OCR.');
       await sleep(350);
-      setStep(2, 70);
+      setStep('analyze', 58);
       await sleep(30);
       const A = PD.analyze(parsed);
       if (!A.sentenceCount) throw new Error('El documento no contiene suficientes frases para construir diapositivas.');
       await sleep(400);
-      setStep(3, 88);
+      // Guarda los textos originales para poder cambiar de idioma más tarde
+      A._orig = { title: A.title, subtitle: A.subtitle, sections: A.sections.map((x) => x.title), keywords: A.keywords.map((k) => k.term) };
+      if (A.srcLang !== state.outLang) {
+        const tp = $('[data-ps="translate"]', proc);
+        tp.classList.remove('hidden');
+        $('.ps-txt', tp).textContent = 'Traduciendo al ' + LANG_NAMES[state.outLang] + ' ';
+        $('em', tp).textContent = '(' + (LANG_NAMES[A.srcLang] || A.srcLang.toUpperCase()) + ' → ' + LANG_NAMES[state.outLang] + ')';
+        setStep('translate', 66);
+      }
+      await localize(A, (p) => { bar.style.width = (66 + p * 8).toFixed(0) + '%'; });
       state.parsed = parsed;
       state.analysis = A;
-      state.meta = { title: A.title, subtitle: null, author: A.author || '', date: new Date().toLocaleDateString(A.lang === 'es' ? 'es-ES' : 'en-US', { year: 'numeric', month: 'long' }) };
+      state.meta = { title: A.title, subtitle: null, author: A.author || '', date: dateFor(state.outLang) };
       state.elements = PD.defaultElements(state.level);
       state.dirty = false;
       state.undo = [];
-      regenerate();
-      await sleep(350);
-      setStep(4, 100);
+      setStep('design', 76);
+      await regenerate((p) => { bar.style.width = (76 + p * 22).toFixed(0) + '%'; });
+      await sleep(250);
+      setStep('done', 100);
       await sleep(300);
       proc.classList.add('hidden');
       showInsights();
       unlock(4);
       goStep(1, false);
-      toast(`¡Listo! ${state.slides.length} diapositivas generadas a partir de tu documento.`);
+      if (A.translateFailed) toast('No se pudo traducir (revisa tu conexión a internet). Puedes editar los textos o volver a intentarlo.', 'err', 7000);
+      else toast(`¡Listo! ${state.slides.length} diapositivas generadas${A.srcLang !== state.outLang ? ' y traducidas al ' + LANG_NAMES[state.outLang] : ''}.`);
     } catch (err) {
       console.error(err);
       proc.classList.add('hidden');
@@ -204,13 +219,54 @@
     countUp($('#ins-sections'), A.sections.length);
     countUp($('#ins-stats'), A.stats.length);
     countUp($('#ins-years'), A.timeline.length);
-    $('#ins-lang').textContent = A.lang.toUpperCase();
+    $('#ins-lang').textContent = A.srcLang === state.outLang ? A.srcLang.toUpperCase() : A.srcLang.toUpperCase() + '→' + state.outLang.toUpperCase();
     $('#ins-kws').innerHTML = A.keywords.slice(0, 14).map((k, i) => `<span style="animation-delay:${i * 40}ms">${esc(k.term)}</span>`).join('');
     $('#ins-outline').innerHTML = A.sections.slice(0, 16).map((s) => `<li>${esc(s.title)}</li>`).join('');
   }
 
   /* ================= Generación ================= */
-  function regenerate() {
+  const LANG_NAMES = { es: 'español', en: 'inglés', fr: 'francés', pt: 'portugués', it: 'italiano', de: 'alemán' };
+  const OUT_LANGS = [
+    { id: 'es', name: 'Español', flag: '🇪🇸', locale: 'es-ES' },
+    { id: 'en', name: 'English', flag: '🇬🇧', locale: 'en-GB' },
+    { id: 'fr', name: 'Français', flag: '🇫🇷', locale: 'fr-FR' },
+    { id: 'de', name: 'Deutsch', flag: '🇩🇪', locale: 'de-DE' },
+    { id: 'pt', name: 'Português', flag: '🇧🇷', locale: 'pt-BR' }
+  ];
+  const dateFor = (lang) => new Date().toLocaleDateString((OUT_LANGS.find((l) => l.id === lang) || OUT_LANGS[0]).locale, { year: 'numeric', month: 'long' });
+  const NEW_SLIDE = {
+    es: ['Nueva diapositiva', ['Haz clic para escribir tu primera idea', 'Añade otra idea importante', 'Cierra con un dato o una conclusión'], 'Nuevo punto'],
+    en: ['New slide', ['Click to write your first idea', 'Add another key point', 'Close with a fact or a conclusion'], 'New point'],
+    fr: ['Nouvelle diapositive', ['Cliquez pour écrire votre première idée', 'Ajoutez une autre idée importante', 'Terminez par un chiffre ou une conclusion'], 'Nouveau point'],
+    de: ['Neue Folie', ['Klicken Sie, um Ihre erste Idee zu schreiben', 'Fügen Sie einen weiteren Kernpunkt hinzu', 'Schließen Sie mit einer Zahl oder einem Fazit'], 'Neuer Punkt'],
+    pt: ['Novo slide', ['Clique para escrever sua primeira ideia', 'Adicione outra ideia importante', 'Feche com um dado ou uma conclusão'], 'Novo ponto']
+  };
+
+  // Pone el análisis en el idioma de salida: etiquetas y textos visibles (título, secciones, conceptos)
+  async function localize(A, onProgress) {
+    const tgt = state.outLang;
+    A.lang = tgt;
+    A.labels = PD.labels[tgt] || PD.labels.es;
+    A.title = A._orig.title;
+    A.subtitle = A._orig.subtitle;
+    A.sections.forEach((x, i) => (x.title = A._orig.sections[i]));
+    A.keywords.forEach((k, i) => (k.term = A._orig.keywords[i]));
+    A.translateFailed = false;
+    if (A.srcLang === tgt) return;
+    const refs = [[A, 'title'], [A, 'subtitle']];
+    A.sections.forEach((x) => refs.push([x, 'title']));
+    A.keywords.forEach((k) => refs.push([k, 'term']));
+    try {
+      const out = await PD.translateTexts(refs.map(([o, k]) => o[k]), A.srcLang, tgt, onProgress);
+      refs.forEach(([o, k], i) => { o[k] = out[i]; PD.markTranslated(out[i], tgt); });
+    } catch (e) {
+      console.error(e);
+      A.translateFailed = true;
+    }
+  }
+
+  let translateWarned = false;
+  async function regenerate(onProgress) {
     state.slides = PD.generate(state.analysis, {
       level: state.level,
       elements: state.elements,
@@ -220,8 +276,66 @@
       date: state.meta.date
     });
     if (!state.opts.notes) state.slides.forEach((s) => (s.notes = ''));
+    const A = state.analysis;
+    if (A.srcLang !== state.outLang && !A.translateFailed) {
+      try {
+        await PD.translateDeck(state.slides, A.srcLang, state.outLang, onProgress);
+      } catch (e) {
+        console.error(e);
+        if (!translateWarned) toast('Parte del texto no se pudo traducir. Revisa tu conexión a internet.', 'err', 6000);
+        translateWarned = true;
+      }
+    }
     state.current = Math.min(state.current, state.slides.length - 1);
   }
+
+  // Bloquea la interfaz mientras se regenera (y se traduce) el contenido
+  async function regenerateBusy() {
+    document.body.classList.add('busy');
+    const needs = state.analysis.srcLang !== state.outLang;
+    const t = needs ? setTimeout(() => toast('Traduciendo al ' + LANG_NAMES[state.outLang] + '…', 'ok', 2500), 400) : null;
+    try { await regenerate(); } finally { clearTimeout(t); document.body.classList.remove('busy'); }
+  }
+
+  /* ================= Idioma de la presentación ================= */
+  function renderLangPickers() {
+    $$('.lang-pick').forEach((box) => {
+      box.innerHTML = OUT_LANGS.map((l) => `<button type="button" class="lp ${l.id === state.outLang ? 'sel' : ''}" data-lang="${l.id}" aria-pressed="${l.id === state.outLang}"><span class="fl">${l.flag}</span>${l.name}</button>`).join('');
+    });
+  }
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest('.lp');
+    if (!b) return;
+    e.preventDefault();
+    const lang = b.dataset.lang;
+    if (lang === state.outLang || document.body.classList.contains('busy')) return;
+    const A = state.analysis;
+    if (A && state.dirty && !window.confirm('Cambiar el idioma regenerará la presentación y se perderán tus ediciones manuales. ¿Continuar?')) return;
+    state.outLang = lang;
+    savePrefs();
+    renderLangPickers();
+    if (!A) { toast('La presentación se creará en ' + LANG_NAMES[lang] + '.', 'ok', 2200); return; }
+    document.body.classList.add('busy');
+    const t = A.srcLang !== lang ? setTimeout(() => toast('Traduciendo al ' + LANG_NAMES[lang] + '…', 'ok', 2500), 300) : null;
+    try {
+      await localize(A);
+      state.meta.title = A.title;
+      state.meta.subtitle = null;
+      state.meta.date = dateFor(lang);
+      state.dirty = false;
+      await regenerate();
+    } finally {
+      clearTimeout(t);
+      document.body.classList.remove('busy');
+    }
+    if (A.translateFailed) toast('No se pudo traducir (revisa tu conexión a internet).', 'err', 5000);
+    else toast('Presentación en ' + LANG_NAMES[lang] + '.', 'ok', 2200);
+    showInsights();
+    if (state.step === 2) renderDesign();
+    if (state.step === 3) renderContent();
+    if (state.step === 4) renderEditor();
+  });
+  renderLangPickers();
 
   /* ================= Paso 2: diseño ================= */
   let prevIndex = 0;
@@ -321,8 +435,7 @@
       state.elements = PD.defaultElements(lv);
       state.dirty = false;
       savePrefs();
-      regenerate();
-      renderContent();
+      regenerateBusy().then(renderContent);
     }));
     // Elementos
     const av = available();
@@ -331,8 +444,7 @@
       if (!confirmRegen()) { inp.checked = !inp.checked; return; }
       state.elements[inp.dataset.el] = inp.checked;
       state.dirty = false;
-      regenerate();
-      renderDeckGrid();
+      regenerateBusy().then(renderDeckGrid);
     }));
     // Campos
     $('#f-title').value = state.slides[0]?.title || state.meta.title;
@@ -372,7 +484,7 @@
   [['#o-numbers', 'numbers'], ['#o-footer', 'footer'], ['#o-emphasis', 'emphasis']].forEach(([sel, k]) => $(sel).addEventListener('change', (e) => { state.opts[k] = e.target.checked; renderDeckGrid(); }));
   $('#o-notes').addEventListener('change', (e) => {
     state.opts.notes = e.target.checked;
-    if (!state.dirty) regenerate();
+    if (!state.dirty) regenerateBusy().then(renderDeckGrid);
     else if (!e.target.checked) state.slides.forEach((s) => (s.notes = ''));
   });
 
@@ -499,11 +611,11 @@
   });
   $('#tb-add').addEventListener('click', () => {
     snapshot();
-    const lang = state.analysis.lang;
+    const ns = NEW_SLIDE[state.outLang] || NEW_SLIDE.es;
     state.slides.splice(state.current + 1, 0, {
       id: 'n' + Date.now().toString(36), type: 'content', layout: 'bullets',
-      title: lang === 'es' ? 'Nueva diapositiva' : 'New slide', kicker: '',
-      bullets: lang === 'es' ? ['Haz clic para escribir tu primera idea', 'Añade otra idea importante', 'Cierra con un dato o una conclusión'] : ['Click to write your first idea', 'Add another key point', 'Close with a fact or conclusion'],
+      title: ns[0], kicker: '',
+      bullets: ns[1].slice(),
       notes: ''
     });
     state.current++;
@@ -533,7 +645,7 @@
     const arr = s.bullets || s.items;
     if (!Array.isArray(arr)) return;
     snapshot();
-    arr.push(typeof arr[0] === 'object' ? { term: 'Término', def: 'Definición' } : (state.analysis.lang === 'es' ? 'Nuevo punto' : 'New point'));
+    arr.push(typeof arr[0] === 'object' ? { term: 'Término', def: 'Definición' } : (NEW_SLIDE[state.outLang] || NEW_SLIDE.es)[2]);
     state.dirty = true;
     renderStage(); refreshThumb(state.current);
   });

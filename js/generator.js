@@ -96,7 +96,7 @@
       slides.push({
         id: id(), type: 'agenda', title: lab.agenda,
         items: body.map((s) => s.title).concat(conclusion ? [conclusion.title] : []).slice(0, 10),
-        notes: (A.lang === 'es' ? 'Recorrido de la presentación: ' : 'Presentation roadmap: ') + body.map((s) => s.title).join(', ') + '.'
+        notes: lab.roadmap + body.map((s) => s.title).join(', ') + '.'
       });
     }
 
@@ -153,9 +153,31 @@
       // Prefiere elementos de lista si la sección es básicamente una lista
       const pool = el.quote ? s.rank.filter((x) => !x.isQuote) : s.rank;
       const chosen = pickSentences(pool, room * nSlides, taken).sort((a, b) => a.pos - b.pos);
-      const per = Math.ceil(chosen.length / nSlides);
-      for (let k = 0; k < nSlides; k++) {
-        const chunk = chosen.slice(k * per, (k + 1) * per);
+      // Reparte las frases en diapositivas respetando un presupuesto de palabras para que nunca se desborden
+      const budget = 82;
+      const chunks = [];
+      let cur = [], words = 0;
+      chosen.forEach((x) => {
+        const w = Math.min(wc(x.text), maxW + 1);
+        if (cur.length && (cur.length >= room || words + w > budget)) { chunks.push(cur); cur = []; words = 0; }
+        cur.push(x); words += w;
+      });
+      if (cur.length) chunks.push(cur);
+      // Si salen demasiadas, conserva las frases más importantes
+      while (chunks.length > nSlides + (lv.id >= 3 ? 1 : 0)) {
+        const all = chunks.flat();
+        const drop = all.slice().sort((a, b) => a.score - b.score)[0];
+        const c = chunks.find((ch) => ch.includes(drop));
+        c.splice(c.indexOf(drop), 1);
+        for (let i = chunks.length - 1; i >= 0; i--) if (!chunks[i].length) chunks.splice(i, 1);
+        // reagrupa
+        const flat = chunks.flat(); chunks.length = 0; cur = []; words = 0;
+        flat.forEach((x) => { const w = Math.min(wc(x.text), maxW + 1); if (cur.length && (cur.length >= room || words + w > budget)) { chunks.push(cur); cur = []; words = 0; } cur.push(x); words += w; });
+        if (cur.length) chunks.push(cur);
+      }
+      const total = chunks.length;
+      for (let k = 0; k < total; k++) {
+        const chunk = chunks[k];
         if (!chunk.length) continue;
         let layout = layouts[li++ % layouts.length];
         const texts = chunk.map((x) => PD.compress(x.text, maxW));
@@ -180,7 +202,7 @@
         group.push({
           id: id(), type: 'content', layout,
           title: s.title,
-          kicker: sub || (nSlides > 1 ? `${lab.part} ${k + 1}/${nSlides}` : (el.dividers ? '' : `${String(si + 1).padStart(2, '0')}`)),
+          kicker: sub || (total > 1 ? `${lab.part} ${k + 1}/${total}` : (el.dividers ? '' : `${String(si + 1).padStart(2, '0')}`)),
           statement,
           bullets: texts,
           image: image ? { src: image.src, alt: image.alt || '' } : null,
