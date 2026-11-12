@@ -151,7 +151,7 @@
       const room = lv.bullets;
       const nSlides = Math.max(1, Math.min(lv.perSection, Math.ceil(s.sentences.length / (room * 1.7))));
       // Prefiere elementos de lista si la sección es básicamente una lista
-      const pool = el.quote ? s.rank.filter((x) => !x.isQuote) : s.rank;
+      const pool = (el.quote ? s.rank.filter((x) => !x.isQuote) : s.rank).filter((x) => !x.junk);
       const chosen = pickSentences(pool, room * nSlides, taken).sort((a, b) => a.pos - b.pos);
       // Reparte las frases en diapositivas respetando un presupuesto de palabras para que nunca se desborden
       const budget = 82;

@@ -112,6 +112,25 @@
   }
   PD.stripRunIn = stripRunIn;
 
+  /* Frases que en realidad son restos de tablas, notas al pie o encabezados del PDF */
+  const LINKERS = new Set(['the', 'of', 'in', 'at', 'by', 'from', 'to', 'and', 'or', 'for', 'with', 'on', 'de', 'del', 'la', 'el', 'los', 'las', 'en', 'y', 'e', 'o', 'a', 'al', 'con', 'por', 'para', 'le', 'les', 'des', 'du', 'et', 'der', 'die', 'das', 'und', 'von', 'da', 'do', 'dos', 'das', 'em', 'no', 'na']);
+  function isJunk(t) {
+    if (/[†‡§¶]/.test(t)) return true;
+    if (/^\W*(NA|N\/A|NR|ND)\b/.test(t)) return true;
+    if (/^[^\p{L}\d“"«(¿¡]/u.test(t)) return true;
+    const w = t.split(/\s+/);
+    let cells = 0;
+    for (let i = 1; i < w.length; i++) {
+      const prev = w[i - 1].toLowerCase().replace(/[^\p{L}]/gu, '');
+      if (/^\p{Lu}\p{Ll}+$/u.test(w[i]) && /^\p{Ll}+$/u.test(w[i - 1]) && !LINKERS.has(prev)) cells++;
+    }
+    if (cells >= 3 && !/[.;:]\s/.test(t)) return true;
+    const letters = (t.match(/\p{L}/gu) || []).length;
+    if (letters < t.length * 0.55) return true;
+    return false;
+  }
+  PD.isJunk = isJunk;
+
   /* ---------- Compresión de frases a viñetas ---------- */
   function compress(sentence, maxWords, opts = {}) {
     let s = sentence.trim();
@@ -341,6 +360,7 @@
       if (/https?:\/\/|www\.|@\w+\.\w/.test(x.text)) sc *= 0.4;
       if (/\?$/.test(x.text)) sc *= 0.8;
       if (/^[“"«]/.test(x.text) || /[”"»],?\s*(afirm|dijo|señal|explic|said|says)/i.test(x.text)) { sc *= 0.45; x.isQuote = true; }
+      if (isJunk(x.text)) { sc *= 0.05; x.junk = true; }
       x.score = sc;
       maxScore = Math.max(maxScore, sc);
     });

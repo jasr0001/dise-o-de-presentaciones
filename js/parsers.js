@@ -220,13 +220,26 @@
         const h = Math.round(Math.abs(it.transform[3]) || it.height || 10);
         if (!cur || Math.abs(cur.y - y) > Math.max(2, h * 0.4)) {
           if (cur) lines.push(cur);
-          cur = { y, x, size: h, text: '', bold: /bold|black|heavy/i.test(it.fontName || '') };
+          cur = { y, x, size: h, text: '', bold: /bold|black|heavy/i.test(it.fontName || ''), parts: [{ x, text: '' }] };
+        } else if (it.str && it.str.trim() && x - (cur.endX || 0) > Math.max(h * 1.8, 14)) {
+          // Hueco horizontal grande en la misma línea: empieza otra celda (tablas) o columna
+          cur.parts.push({ x, text: '' });
         }
-        cur.text += (cur.text && !/\s$/.test(cur.text) && it.str && !/^\s/.test(it.str) && x - (cur.endX || 0) > h * 0.15 ? ' ' : '') + it.str;
+        const part = cur.parts[cur.parts.length - 1];
+        if (!it.str.trim()) { if (it.str) { cur.text += ' '; part.text += ' '; } continue; }
+        const sep = (t) => (t && !/\s$/.test(t) && it.str && !/^\s/.test(it.str) && x - (cur.endX || 0) > h * 0.15 ? ' ' : '');
+        cur.text += sep(cur.text) + it.str;
+        part.text += sep(part.text) + it.str;
         cur.endX = x + (it.width || 0);
         cur.size = Math.max(cur.size, h);
       }
       if (cur) lines.push(cur);
+      lines.forEach((l) => {
+        l.parts = l.parts.map((q) => ({ x: q.x, text: q.text.trim() })).filter((q) => q.text);
+        const long = l.parts.filter((q) => q.text.length > 45).length;
+        // Fila de tabla: varias celdas en la misma línea (dos columnas largas de texto no cuentan)
+        l.isRow = l.parts.length >= 2 && !(l.parts.length === 2 && long === 2);
+      });
       pages.push(lines.filter((l) => l.text.trim()));
       onProgress && onProgress(p / pdf.numPages);
     }
@@ -262,11 +275,54 @@
       } else if (t) blocks.push({ type: 'para', text: t });
       para = [];
     };
+    // Agrupa filas consecutivas en tablas (las líneas cortas intermedias son celdas partidas en dos renglones)
+    let table = null;
+    const flushTable = () => {
+      if (!table) return;
+      if (table.rows.length >= 2) {
+        const width = Math.max(...table.rows.map((r) => r.length));
+        blocks.push({ type: 'table', rows: table.rows.map((r) => { const c = r.slice(0, width); while (c.length < width) c.push(''); return c; }) });
+      } else table.raw.forEach((l) => para.push(l.text.trim()));
+      table = null;
+    };
+    const cellIndex = (x) => {
+      let best = 0, d = Infinity;
+      table.xs.forEach((cx, i) => { const dd = Math.abs(cx - x); if (dd < d) { d = dd; best = i; } });
+      return best;
+    };
     pages.forEach((lines) => {
       lastY = null;
-      lines.forEach((l) => {
+      lines.forEach((l, li) => {
         const t = l.text.trim();
         if (repeated.has(norm(t))) return;
+        const nextL = lines[li + 1];
+        if (l.isRow && l.size < body * 1.12 && (table || (nextL && (nextL.isRow || (nextL.text.length < 60 && nextL.size < body * 1.12 && Math.abs(nextL.y - l.y) < l.size * 2.6))))) {
+          if (!table) { flush(); table = { rows: [], raw: [], xs: l.parts.map((q) => q.x) }; }
+          const row = new Array(table.xs.length).fill('');
+          l.parts.forEach((q) => {
+            let i = cellIndex(q.x);
+            if (Math.abs(table.xs[i] - q.x) > 40 && l.parts.length > table.xs.length) { table.xs.push(q.x); row.push(''); i = table.xs.length - 1; }
+            row[i] = row[i] ? row[i] + ' ' + q.text : q.text;
+          });
+          table.rows.push(row);
+          table.raw.push(l);
+          table.lastY = l.y;
+          lastY = l.y;
+          return;
+        }
+        if (table) {
+          // Renglón corto justo debajo de una fila: continuación de una celda
+          if (t.length < 60 && l.size < body * 1.12 && !l.bold && table.lastY !== undefined && Math.abs(table.lastY - l.y) < l.size * 2.6 && table.rows.length) {
+            const r = table.rows[table.rows.length - 1];
+            const i = cellIndex(l.parts[0] ? l.parts[0].x : l.x);
+            r[i] = r[i] ? r[i] + ' ' + t : t;
+            table.raw.push(l);
+            table.lastY = l.y;
+            lastY = l.y;
+            return;
+          }
+          flushTable();
+        }
         if (/^(p[aá]g(ina)?\.?\s*)?\d{1,4}(\s*(de|of|\/)\s*\d+)?$/i.test(t)) return;
         const isHead = (l.size >= body * 1.18 && t.length < 120 && t.split(/\s+/).length <= 16) ||
           (l.bold && l.size >= body && t.length < 80 && !/[.,;]$/.test(t) && /^\p{Lu}|^\d/u.test(t));
@@ -288,7 +344,9 @@
         para.push(t);
         lastY = l.y; lastSize = l.size;
       });
+      flushTable();
     });
+    flushTable();
     flush();
 
     // Párrafos que cruzan de página: une si el anterior no termina en punto
