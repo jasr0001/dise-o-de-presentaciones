@@ -909,5 +909,9 @@
     });
   })();
 
+  // Avisos de actualización (ver index.html)
+  window.__luminaHasWork = () => !!state.analysis;
+  window.__luminaNotifyUpdate = () => toast('Hay una versión nueva de Lumina. Recarga la página cuando termines para usarla.', 'ok', 8000);
+
   goStep(1, false);
 })();

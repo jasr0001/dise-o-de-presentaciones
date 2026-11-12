@@ -5,10 +5,10 @@
   const wc = (s) => (s.match(/\S+/g) || []).length;
 
   PD.levels = [
-    { id: 1, name: 'Esencial', desc: 'Lo imprescindible. Ideal para una exposición rápida de 5 minutos.', sections: 4, perSection: 1, bullets: 3, words: 12, budget: 36 },
-    { id: 2, name: 'Equilibrado', desc: 'Ideas principales con datos y contexto. Perfecto para clases y reuniones.', sections: 6, perSection: 1, bullets: 4, words: 15, budget: 50 },
-    { id: 3, name: 'Detallado', desc: 'Cada sección desarrollada, con separadores, cronología y conceptos.', sections: 9, perSection: 2, bullets: 4, words: 18, budget: 60 },
-    { id: 4, name: 'Exhaustivo', desc: 'Cobertura amplia del documento, con glosario, referencias y notas completas.', sections: 14, perSection: 3, bullets: 5, words: 20, budget: 70 }
+    { id: 1, name: 'Esencial', desc: 'Lo imprescindible. Ideal para una exposición rápida de 5 minutos.', sections: 4, perSection: 1, bullets: 3, words: 16, budget: 42 },
+    { id: 2, name: 'Equilibrado', desc: 'Ideas principales con datos y contexto. Perfecto para clases y reuniones.', sections: 6, perSection: 1, bullets: 3, words: 20, budget: 54 },
+    { id: 3, name: 'Detallado', desc: 'Cada sección desarrollada, con separadores, cronología y conceptos.', sections: 9, perSection: 2, bullets: 4, words: 21, budget: 62 },
+    { id: 4, name: 'Exhaustivo', desc: 'Cobertura amplia del documento, con glosario, referencias y notas completas.', sections: 14, perSection: 3, bullets: 4, words: 22, budget: 70 }
   ];
 
   PD.elementList = [
@@ -31,7 +31,7 @@
   PD.defaultElements = (level) => {
     const on = {
       1: ['stats', 'conclusions', 'closing'],
-      2: ['agenda', 'summary', 'stats', 'chart', 'quote', 'images', 'conclusions', 'closing'],
+      2: ['agenda', 'summary', 'stats', 'quote', 'images', 'conclusions', 'closing'],
       3: ['agenda', 'summary', 'dividers', 'stats', 'chart', 'timeline', 'quote', 'concepts', 'images', 'tables', 'conclusions', 'closing'],
       4: PD.elementList.map((e) => e.id)
     }[level];
@@ -119,8 +119,10 @@
     }
 
     /* Elementos especiales y dónde insertarlos */
-    const stats = el.stats ? A.stats.slice(0, lv.id >= 3 ? 4 : 3) : [];
-    const pctStats = A.stats.filter((s) => s.pct && s.num <= 100).slice(0, 6);
+    const statSent = new Set();
+    const stats = el.stats ? A.stats.filter((s) => !statSent.has(s.sentence) && statSent.add(s.sentence)).slice(0, lv.id >= 3 ? 4 : 3) : [];
+    const seenSent = new Set();
+    const pctStats = A.stats.filter((s) => s.pct && s.num <= 100 && !seenSent.has(s.sentence) && seenSent.add(s.sentence)).slice(0, 5);
     const specials = [];
     if (stats.length >= 2) specials.push({ at: 0.34, slide: { id: id(), type: 'stats', title: lab.stats, stats: stats.map((s) => ({ value: s.value, label: s.label })), notes: stats.map((s) => s.sentence).join(' ') } });
     if (el.chart && pctStats.length >= 3) {
@@ -152,7 +154,9 @@
       // Diapositivas según la extensión real de la sección: lo breve se cuenta en una sola
       const nSlides = Math.max(1, Math.min(lv.perSection, Math.round(s.words / 130)));
       // Prefiere elementos de lista si la sección es básicamente una lista
-      const pool = (el.quote ? s.rank.filter((x) => !x.isQuote) : s.rank).filter((x) => !x.junk);
+      const fits = (x) => (wc(x.text) <= maxW * 1.25 ? 1 : wc(x.text) <= maxW * 1.7 ? 0.8 : 0.6);
+      const pool = (el.quote ? s.rank.filter((x) => !x.isQuote) : s.rank).filter((x) => !x.junk)
+        .slice().sort((a, b) => b.score * fits(b) - a.score * fits(a));
       const chosen = pickSentences(pool, room * nSlides, taken).sort((a, b) => a.pos - b.pos);
       // Reparte las frases en diapositivas respetando un presupuesto de palabras para que nunca se desborden
       const budget = lv.budget;

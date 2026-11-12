@@ -363,6 +363,7 @@
       if (/\?$/.test(x.text)) sc *= 0.8;
       if (/^[“"«]/.test(x.text) || /[”"»],?\s*(afirm|dijo|señal|explic|said|says)/i.test(x.text)) { sc *= 0.45; x.isQuote = true; }
       if (isJunk(x.text)) { sc *= 0.05; x.junk = true; }
+      if (/^(they|it|this|these|those|he|she|such|ils|elles|il|elle|ce|cela|ceci|ellos|ellas|esto|esta|este|estos|estas|eso|sie|er|es|dies|eles|elas|isso|isto)\b/i.test(x.text)) sc *= 0.72;
       x.score = sc;
       maxScore = Math.max(maxScore, sc);
     });
@@ -430,18 +431,23 @@
     const stats = [];
     const statRe = /(?:(?:US)?\$|€|£)\s?\d[\d.,]*\s?(?:millones|mil millones|billones|millón|millon|mil|million|billion|bn|M|k)?|\b\d{1,3}(?:[.,]\d+)?\s?%|\b\d[\d.,]*\s?(?:millones|mil millones|millón|billones|million|billion|veces|times|x)\b|\b\d[\d.,]*\s?(?:km|kg|toneladas|tons?|MW|GW|kWh|TWh|°C|grados|años|years|horas|hours|días|days|personas|people|usuarios|users|empresas|companies|países|countries|pacientes|patients|proyectos|projects|empleos|jobs)\b|\b\d{1,3}(?:[.,]\d{3})+\b/gi;
     allSentences.forEach((x) => {
+      if (x.junk) return;
       // Rangos («from 23% to 72%», «entre 10 y 20 %», «23–72%») se tratan como una sola cifra
-      const rng = x.text.match(/\b(?:from|between|de|del|entre)?\s*(\d{1,3}(?:[.,]\d+)?)\s?%?\s?(?:to|and|a|al|y|–|-)\s?(\d{1,3}(?:[.,]\d+)?)\s?%/i);
-      let text = x.text;
+      const clean = x.text.replace(/\((?:reference|ref\.?|referencia|normal|range|rango)[^)]*\)/gi, ' ').replace(/body mass index[^,;.]*|índice de masa corporal[^,;.]*|\bBMI\b[^,;.]*|IMC[^,;.]*/gi, ' ');
+      const rng = clean.match(/\b(?:from|between|de|del|entre)?\s*(\d{1,3}(?:[.,]\d+)?)\s?%?\s?(?:to|and|a|al|y|–|-)\s?(\d{1,3}(?:[.,]\d+)?)\s?%/i);
+      let text = clean;
       if (rng) {
         const val = `${rng[1]}–${rng[2]}%`;
         let label = compress(x.text, 13).replace(/^(el|la|los|las|un|una|the|an?)\s+(?=(de|del|of)\b)/i, '').replace(/^(de|del|of)\s+/i, '');
         if (wordCount(label) >= 3) stats.push({ value: val, label: cap(label), sentence: x.text, num: parseFloat(rng[2].replace(',', '.')), pct: true, range: true, score: x.score * 1.1, section: x.section });
-        text = x.text.replace(rng[0], ' ');
+        text = clean.replace(rng[0], ' ');
       }
       const m = text.match(statRe);
       if (!m) return;
-      m.slice(0, 2).forEach((v) => {
+      m.slice(0, 1).forEach((v) => {
+        if (/\b(mg|ml|mmol|mmhg|dl|kg\/m|g\/dl|µl|ul|iu|bpm|lpm|mm3)\b/i.test(text.slice(text.indexOf(v), text.indexOf(v) + v.length + 8))) return;
+        if (/\b(a[nñ]os|years?|ans|jahre|anos|d[ií]as|days?|jours|horas|hours?|heures|semanas|weeks?)\b/i.test(v)) return;
+        if (/(saturation|saturaci[oó]n|mmhg|pulse|pulso|bpm|respiratory rate|frecuencia|°c|temperature|temperatura|reference|referencia)/i.test(text)) return;
         const value = v.trim().replace(/\s+%/, '%');
         if (/^(19|20)\d{2}$/.test(value)) return;
         const num = parseFloat(value.replace(/[^\d.,]/g, '').replace(/\.(?=\d{3}\b)/g, '').replace(',', '.'));
@@ -489,7 +495,8 @@
     while ((qm = qre.exec(fullText))) quotes.push({ text: qm[1].trim(), author: qm[2] || '' });
     // Si no hay citas: la frase más potente como cita destacada
     const pullScore = (x) => x.score * (CUES.test(x.text) ? 1.35 : 1) * (sections[x.section] && (sections[x.section].isConclusion || sections[x.section].isAbstract) ? 1.3 : 1) * (/\d/.test(x.text) ? 0.85 : 1);
-    const pull = allSentences.filter((x) => { const w = wordCount(x.text); return w >= 12 && w <= 32 && !/\d{3,}/.test(x.text) && !x.isQuote; }).sort((a, b) => pullScore(b) - pullScore(a))[0];
+    const hasConcl = sections.some((x) => x.isConclusion);
+    const pull = allSentences.filter((x) => { const w = wordCount(x.text); return w >= 12 && w <= 32 && !/\d{3,}/.test(x.text) && !x.isQuote && !x.junk && !(hasConcl && sections[x.section] && sections[x.section].isConclusion); }).sort((a, b) => pullScore(b) - pullScore(a))[0];
 
     /* Definiciones / glosario */
     const defs = [];

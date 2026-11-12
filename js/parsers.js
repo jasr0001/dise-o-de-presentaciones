@@ -240,7 +240,7 @@
         // Fila de tabla: varias celdas en la misma línea (dos columnas largas de texto no cuentan)
         l.isRow = l.parts.length >= 2 && !(l.parts.length === 2 && long === 2);
       });
-      pages.push(lines.filter((l) => l.text.trim()));
+      pages.push(detectTableZones(lines.filter((l) => l.text.trim())));
       onProgress && onProgress(p / pdf.numPages);
     }
 
@@ -293,6 +293,7 @@
     pages.forEach((lines) => {
       lastY = null;
       lines.forEach((l, li) => {
+        if (l.table) { flushTable(); flush(); blocks.push({ type: 'table', rows: l.table }); lastY = l.y; return; }
         const t = l.text.trim();
         if (repeated.has(norm(t))) return;
         const nextL = lines[li + 1];
@@ -353,6 +354,12 @@
     const merged = [];
     blocks.forEach((b) => {
       const prev = merged[merged.length - 1];
+      // Tabla que continúa en la página siguiente: se une en una sola (sin repetir el encabezado)
+      if (prev && prev.type === 'table' && b.type === 'table' && prev.rows[0].length === b.rows[0].length) {
+        const same = b.rows[0].join('|') === prev.rows[0].join('|');
+        prev.rows.push(...(same ? b.rows.slice(1) : b.rows));
+        return;
+      }
       if (prev && prev.type === 'para' && b.type === 'para' && !/[.!?:”"»)]$/.test(prev.text) && /^\p{Ll}/u.test(b.text)) prev.text += ' ' + b.text;
       else merged.push(b);
     });
@@ -363,6 +370,64 @@
       blocks: merged,
       pages: pdf.numPages
     };
+  }
+
+  /* Tablas con celdas de varias líneas o centradas verticalmente: el texto «salta» a la derecha y hacia arriba.
+     Se localiza la zona y se reconstruyen filas y columnas a partir de las posiciones. */
+  function detectTableZones(lines) {
+    if (lines.length < 4) return lines;
+    const short = (l) => l.text.length < 80;
+    const used = new Set();
+    const out = [];
+    for (let i = 1; i < lines.length; i++) {
+      const a = lines[i - 1], b = lines[i];
+      if (used.has(i) || !(short(a) && short(b) && b.x > a.x + 40 && b.y >= a.y - 2)) continue;
+      const size = Math.max(a.size, b.size) || 10;
+      // Un salto grande hacia arriba es un cambio de columna del texto, no una celda
+      if (b.y - a.y > size * 7) continue;
+      let start = i - 1;
+      while (start > 0 && short(lines[start - 1]) && !(lines[start - 1].size > Math.min(a.size, b.size) * 1.15) && lines[start - 1].y - lines[start].y < size * 3.2 && lines[start - 1].y >= lines[start].y - 2 * size * 0 - 1 && !used.has(start - 1)) start--;
+      let end = i;
+      let minY = Math.min(a.y, b.y), maxY = Math.max(a.y, b.y);
+      for (let k = start; k <= i; k++) { minY = Math.min(minY, lines[k].y); maxY = Math.max(maxY, lines[k].y); }
+      const cellSize = Math.min(a.size, b.size) || size;
+      const isHead = (l) => l.size > cellSize * 1.15 || (l.bold && l.parts.length <= 1);
+      while (end + 1 < lines.length && short(lines[end + 1]) && !isHead(lines[end + 1]) && lines[end + 1].y > minY - size * 5 && lines[end + 1].y <= maxY + 2) {
+        end++; minY = Math.min(minY, lines[end].y);
+      }
+      const zone = lines.slice(start, end + 1);
+      const segs = zone.flatMap((l) => (l.parts && l.parts.length ? l.parts.map((q) => ({ x: q.x, y: l.y, text: q.text })) : [{ x: l.x, y: l.y, text: l.text.trim() }])).filter((q) => q.text);
+      // Columnas por posición horizontal
+      const xs = [...new Set(segs.map((q) => Math.round(q.x)))].sort((m, n) => m - n);
+      const cols = [];
+      xs.forEach((x) => { if (!cols.length || x - cols[cols.length - 1][cols[cols.length - 1].length - 1] > 30) cols.push([x]); else cols[cols.length - 1].push(x); });
+      if (cols.length < 2 || segs.length < 4) continue;
+      const colOf = (x) => cols.findIndex((c) => x >= c[0] - 1 && x <= c[c.length - 1] + 1);
+      // Filas: bandas verticales separadas por un hueco mayor que el interlineado
+      const ys = [...new Set(segs.map((q) => q.y))].sort((m, n) => n - m);
+      const bands = [];
+      ys.forEach((y) => { const last = bands[bands.length - 1]; if (!last || last.lo - y > size * 1.35) bands.push({ hi: y, lo: y }); else last.lo = y; });
+      if (bands.length < 2) continue;
+      const rows = bands.map((band) => {
+        const r = new Array(cols.length).fill('');
+        segs.filter((q) => q.y <= band.hi && q.y >= band.lo).sort((m, n) => n.y - m.y || m.x - n.x).forEach((q) => { const c = colOf(Math.round(q.x)); r[c] = r[c] ? r[c] + ' ' + q.text : q.text; });
+        return r.map((c) => c.replace(/\s+/g, ' ').trim());
+      }).filter((r) => r.filter(Boolean).length >= 2);
+      if (rows.length < 2) continue;
+      const cells = rows.flat().filter(Boolean).map((c) => c.length).sort((m, n) => m - n);
+      const median = cells[Math.floor(cells.length / 2)] || 0;
+      if (cols.length === 2 && (median > 45 || rows.length > 25)) continue;
+      for (let k = start; k <= end; k++) used.add(k);
+      out.push({ at: start, end, line: { y: zone[0].y, x: zone[0].x, size, text: '', table: rows, parts: [] } });
+    }
+    if (!out.length) return lines;
+    const res = [];
+    for (let k = 0; k < lines.length; k++) {
+      const z = out.find((o) => o.at === k);
+      if (z) { res.push(z.line); k = z.end; continue; }
+      if (!used.has(k)) res.push(lines[k]);
+    }
+    return res;
   }
 
   /* ---------- DOCX ---------- */
