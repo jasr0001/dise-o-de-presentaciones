@@ -35,13 +35,22 @@
     return s;
   };
 
+  // Detecta el idioma del documento (es, en, fr, pt, it, de); la presentación siempre sale en español
+  const LANG_WORDS = {
+    es: 'de la que el en los del las por una para con como más pero sus es se lo al este esta también',
+    en: 'the of and to in is that for it with as was on are this by be from have which',
+    fr: 'le la les des du et est une pour que dans qui sur pas avec ce sont au aux par plus',
+    pt: 'de que não uma para com os do da em no na dos das ao pelo pela mais como foi são',
+    it: 'il di che è la per un una non sono gli della del nel con delle anche come più questo',
+    de: 'der die und das ist nicht ein eine zu mit den von auf für sich des dem auch werden'
+  };
   function detectLang(text) {
     const words = tokenize(text.slice(0, 20000));
-    let es = 0, en = 0;
-    const esSet = new Set(['de', 'la', 'que', 'el', 'en', 'los', 'del', 'las', 'por', 'una', 'para', 'con', 'como', 'más', 'pero', 'sus', 'es']);
-    const enSet = new Set(['the', 'of', 'and', 'to', 'in', 'is', 'that', 'for', 'it', 'with', 'as', 'was', 'on', 'are', 'this', 'by']);
-    words.forEach((w) => { if (esSet.has(w)) es++; if (enSet.has(w)) en++; });
-    return en > es * 1.2 ? 'en' : 'es';
+    const sets = Object.fromEntries(Object.entries(LANG_WORDS).map(([k, v]) => [k, new Set(v.split(' '))]));
+    const score = Object.fromEntries(Object.keys(sets).map((k) => [k, 0]));
+    words.forEach((w) => { for (const k in sets) if (sets[k].has(w)) score[k]++; });
+    const best = Object.entries(score).sort((a, b) => b[1] - a[1])[0];
+    return best[1] > score.es * 1.15 ? best[0] : 'es';
   }
 
   function splitSentences(text) {
@@ -222,7 +231,7 @@
     const blocks = (parsed.blocks || []).filter((b) => b.type !== 'para' || wordCount(b.text) >= 3);
     const fullText = blocks.map((b) => b.text || (b.items || []).join('. ') || '').join('\n');
     const lang = detectLang(fullText);
-    const lab = L[lang];
+    const lab = L.es;
 
     let { title, sections, refBlocks } = buildSections(blocks, parsed.title);
     if (!title || title.length < 3) title = parsed.fileTitle ? cap(parsed.fileTitle) : '';
@@ -384,7 +393,7 @@
           .sort((a, b) => b.v - a.v);
         let t;
         if (bi[0] && bi[0].v > (scored[0]?.v || 0) * 0.9) t = bi[0].k;
-        else t = scored.slice(0, 2).map((x) => bestSurface(x.st)).join(lang === 'es' ? ' y ' : ' and ');
+        else t = scored.slice(0, 2).map((x) => bestSurface(x.st)).join(lang === 'en' ? ' and ' : ' y ');
         s.title = cap(t || `${lab.part} ${si + 1}`);
         s.autoTitle = true;
       }
@@ -457,7 +466,7 @@
 
     /* Definiciones / glosario */
     const defs = [];
-    const defRe = lang === 'es'
+    const defRe = lang !== 'en'
       ? /^(?:el|la|los|las|un|una)?\s*([\p{L}][\p{L}\s-]{2,38}?)\s+(?:es|son|se define como|se entiende por|consiste en|se refiere a)\s+((?:un|una|el|la|los|las|aquel|aquella|aquellos|el conjunto|la capacidad|el proceso)\b.{15,170})$/iu
       : /^(?:the|an?)?\s*([\p{L}][\p{L}\s-]{2,38}?)\s+(?:is|are|refers to|is defined as|consists of|means)\s+((?:an?|the|any|process|set)\b.{15,170})$/iu;
     allSentences.forEach((x) => {
@@ -489,10 +498,11 @@
     const images = sections.flatMap((s) => s.images.map((im) => ({ ...im, section: s.title })));
 
     return {
-      title: cap(title || (lang === 'es' ? 'Presentación' : 'Presentation')),
+      title: cap(title || 'Presentación'),
       subtitle,
       author: /^\(?(anonymous|unknown|desconocido|admin|user|usuario|author|autor)\)?$/i.test((parsed.author || '').trim()) ? '' : (parsed.author || ''),
-      lang,
+      lang: 'es',
+      srcLang: lang,
       labels: lab,
       sections,
       keywords,

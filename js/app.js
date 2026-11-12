@@ -144,40 +144,57 @@
     const steps = $$('.ps', proc);
     steps.forEach((s) => s.classList.remove('run', 'ok'));
     const bar = $('#proc-bar');
-    const setStep = (k, pct) => {
+    const order = steps.map((s) => s.dataset.ps);
+    const setStep = (name, pct) => {
+      const k = order.indexOf(name);
       steps.forEach((s, i) => { s.classList.toggle('ok', i < k); s.classList.toggle('run', i === k); });
       bar.style.width = pct + '%';
     };
+    $('[data-ps="translate"]', proc).classList.add('hidden');
     const em = $('[data-ps="read"] em', proc);
     em.textContent = file && /^image\//.test(file.type) ? '(reconocimiento óptico de texto)' : '';
     try {
-      setStep(0, 8);
+      setStep('read', 8);
       const parsed = await parseFn((p) => { bar.style.width = (8 + p * 37).toFixed(0) + '%'; });
       await sleep(250);
-      setStep(1, 52);
+      setStep('struct', 45);
       if (!parsed.blocks || !parsed.blocks.some((b) => b.type === 'para' || b.type === 'list')) throw new Error('No se encontró texto legible en el documento. Si es un PDF escaneado, súbelo como imagen para aplicar OCR.');
       await sleep(350);
-      setStep(2, 70);
+      setStep('analyze', 58);
       await sleep(30);
       const A = PD.analyze(parsed);
       if (!A.sentenceCount) throw new Error('El documento no contiene suficientes frases para construir diapositivas.');
       await sleep(400);
-      setStep(3, 88);
+      if (A.srcLang !== 'es') {
+        // Documento en otro idioma: todo se traduce al español
+        const tp = $('[data-ps="translate"]', proc);
+        tp.classList.remove('hidden');
+        $('em', tp).textContent = '(' + (LANG_NAMES[A.srcLang] || A.srcLang.toUpperCase()) + ' → español)';
+        setStep('translate', 66);
+        try {
+          await translateAnalysis(A, (p) => { bar.style.width = (66 + p * 8).toFixed(0) + '%'; });
+        } catch (e) {
+          console.error(e);
+          A.translateFailed = true;
+        }
+      }
       state.parsed = parsed;
       state.analysis = A;
-      state.meta = { title: A.title, subtitle: null, author: A.author || '', date: new Date().toLocaleDateString(A.lang === 'es' ? 'es-ES' : 'en-US', { year: 'numeric', month: 'long' }) };
+      state.meta = { title: A.title, subtitle: null, author: A.author || '', date: new Date().toLocaleDateString('es-ES', { year: 'numeric', month: 'long' }) };
       state.elements = PD.defaultElements(state.level);
       state.dirty = false;
       state.undo = [];
-      regenerate();
-      await sleep(350);
-      setStep(4, 100);
+      setStep('design', 76);
+      await regenerate((p) => { bar.style.width = (76 + p * 22).toFixed(0) + '%'; });
+      await sleep(250);
+      setStep('done', 100);
       await sleep(300);
       proc.classList.add('hidden');
       showInsights();
       unlock(4);
       goStep(1, false);
-      toast(`¡Listo! ${state.slides.length} diapositivas generadas a partir de tu documento.`);
+      if (A.translateFailed) toast('No se pudo traducir al español (revisa tu conexión a internet). Puedes editar los textos o volver a intentarlo.', 'err', 7000);
+      else toast(`¡Listo! ${state.slides.length} diapositivas generadas${A.srcLang !== 'es' ? ' y traducidas al español' : ''}.`);
     } catch (err) {
       console.error(err);
       proc.classList.add('hidden');
@@ -204,13 +221,25 @@
     countUp($('#ins-sections'), A.sections.length);
     countUp($('#ins-stats'), A.stats.length);
     countUp($('#ins-years'), A.timeline.length);
-    $('#ins-lang').textContent = A.lang.toUpperCase();
+    $('#ins-lang').textContent = A.srcLang === 'es' ? 'ES' : A.srcLang.toUpperCase() + '→ES';
     $('#ins-kws').innerHTML = A.keywords.slice(0, 14).map((k, i) => `<span style="animation-delay:${i * 40}ms">${esc(k.term)}</span>`).join('');
     $('#ins-outline').innerHTML = A.sections.slice(0, 16).map((s) => `<li>${esc(s.title)}</li>`).join('');
   }
 
   /* ================= Generación ================= */
-  function regenerate() {
+  const LANG_NAMES = { en: 'inglés', fr: 'francés', pt: 'portugués', it: 'italiano', de: 'alemán' };
+
+  // Traduce los textos del análisis que se muestran tal cual (título, secciones, conceptos)
+  async function translateAnalysis(A, onProgress) {
+    const refs = [[A, 'title'], [A, 'subtitle']];
+    A.sections.forEach((s) => refs.push([s, 'title']));
+    A.keywords.forEach((k) => refs.push([k, 'term']));
+    const out = await PD.translateTexts(refs.map(([o, k]) => o[k]), A.srcLang, onProgress);
+    refs.forEach(([o, k], i) => { o[k] = out[i]; PD.markTranslated(out[i]); });
+  }
+
+  let translateWarned = false;
+  async function regenerate(onProgress) {
     state.slides = PD.generate(state.analysis, {
       level: state.level,
       elements: state.elements,
@@ -220,7 +249,25 @@
       date: state.meta.date
     });
     if (!state.opts.notes) state.slides.forEach((s) => (s.notes = ''));
+    const A = state.analysis;
+    if (A.srcLang !== 'es' && !A.translateFailed) {
+      try {
+        await PD.translateDeck(state.slides, A.srcLang, onProgress);
+      } catch (e) {
+        console.error(e);
+        if (!translateWarned) toast('Parte del texto no se pudo traducir. Revisa tu conexión a internet.', 'err', 6000);
+        translateWarned = true;
+      }
+    }
     state.current = Math.min(state.current, state.slides.length - 1);
+  }
+
+  // Bloquea la interfaz mientras se regenera (y se traduce) el contenido
+  async function regenerateBusy() {
+    document.body.classList.add('busy');
+    const needs = state.analysis.srcLang !== 'es';
+    const t = needs ? setTimeout(() => toast('Traduciendo al español…', 'ok', 2500), 400) : null;
+    try { await regenerate(); } finally { clearTimeout(t); document.body.classList.remove('busy'); }
   }
 
   /* ================= Paso 2: diseño ================= */
@@ -321,8 +368,7 @@
       state.elements = PD.defaultElements(lv);
       state.dirty = false;
       savePrefs();
-      regenerate();
-      renderContent();
+      regenerateBusy().then(renderContent);
     }));
     // Elementos
     const av = available();
@@ -331,8 +377,7 @@
       if (!confirmRegen()) { inp.checked = !inp.checked; return; }
       state.elements[inp.dataset.el] = inp.checked;
       state.dirty = false;
-      regenerate();
-      renderDeckGrid();
+      regenerateBusy().then(renderDeckGrid);
     }));
     // Campos
     $('#f-title').value = state.slides[0]?.title || state.meta.title;
@@ -372,7 +417,7 @@
   [['#o-numbers', 'numbers'], ['#o-footer', 'footer'], ['#o-emphasis', 'emphasis']].forEach(([sel, k]) => $(sel).addEventListener('change', (e) => { state.opts[k] = e.target.checked; renderDeckGrid(); }));
   $('#o-notes').addEventListener('change', (e) => {
     state.opts.notes = e.target.checked;
-    if (!state.dirty) regenerate();
+    if (!state.dirty) regenerateBusy().then(renderDeckGrid);
     else if (!e.target.checked) state.slides.forEach((s) => (s.notes = ''));
   });
 
@@ -499,7 +544,7 @@
   });
   $('#tb-add').addEventListener('click', () => {
     snapshot();
-    const lang = state.analysis.lang;
+    const lang = 'es';
     state.slides.splice(state.current + 1, 0, {
       id: 'n' + Date.now().toString(36), type: 'content', layout: 'bullets',
       title: lang === 'es' ? 'Nueva diapositiva' : 'New slide', kicker: '',
@@ -533,7 +578,7 @@
     const arr = s.bullets || s.items;
     if (!Array.isArray(arr)) return;
     snapshot();
-    arr.push(typeof arr[0] === 'object' ? { term: 'Término', def: 'Definición' } : (state.analysis.lang === 'es' ? 'Nuevo punto' : 'New point'));
+    arr.push(typeof arr[0] === 'object' ? { term: 'Término', def: 'Definición' } : 'Nuevo punto');
     state.dirty = true;
     renderStage(); refreshThumb(state.current);
   });

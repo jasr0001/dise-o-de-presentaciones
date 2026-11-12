@@ -443,3 +443,5 @@ select option { background: var(--ui-panel-solid); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+body.busy .lvl, body.busy #elements-grid, body.busy #deck-grid { opacity: .55; pointer-events: none; transition: opacity .2s; }
