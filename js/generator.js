@@ -96,7 +96,7 @@
       slides.push({
         id: id(), type: 'agenda', title: lab.agenda,
         items: body.map((s) => s.title).concat(conclusion ? [conclusion.title] : []).slice(0, 10),
-        notes: (A.lang === 'es' ? 'Recorrido de la presentación: ' : 'Presentation roadmap: ') + body.map((s) => s.title).join(', ') + '.'
+        notes: lab.roadmap + body.map((s) => s.title).join(', ') + '.'
       });
     }
 

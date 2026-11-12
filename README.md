@@ -1,6 +1,6 @@
 # Lumina Slides — Documentos convertidos en presentaciones
 
-Aplicación web que convierte artículos, informes, revistas, tesis o libros en presentaciones diseñadas al detalle, lista para descargar en **PDF**. Los documentos se leen y analizan **en el navegador** y nunca se suben a un servidor. Si el documento no está en español, solo el texto de las diapositivas se envía a un traductor para obtener la presentación en español.
+Aplicación web que convierte artículos, informes, revistas, tesis o libros en presentaciones diseñadas al detalle, lista para descargar en **PDF**. Los documentos se leen y analizan **en el navegador** y nunca se suben a un servidor. Si la presentación se pide en un idioma distinto al del documento, solo el texto de las diapositivas se envía a un traductor.
 
 ## Cómo usarla
 
@@ -51,7 +51,7 @@ PDF, DOCX/DOCM/DOTX, DOC (extracción heurística), PPTX, ODT/ODP/ODS, EPUB, RTF
 - Puntúa cada frase con TF‑IDF, posición, señales discursivas («en conclusión», «los resultados muestran»…) y presencia de datos.
 - Extrae palabras clave (incluidas expresiones de dos palabras), cifras con su contexto, cronologías, citas textuales, definiciones para el glosario, tablas, imágenes y referencias.
 - Condensa frases en viñetas sin cortar ideas a medias y resalta automáticamente los conceptos clave.
-- Detecta el idioma del documento (español, inglés, francés, portugués, italiano, alemán). **La presentación siempre sale en español**: si el documento está en otro idioma, se traduce el texto de las diapositivas con el traductor integrado del navegador (si está disponible) o con Google Translate.
+- Detecta el idioma del documento (español, inglés, francés, portugués, italiano, alemán). **El cliente elige el idioma de la presentación**: español, inglés, francés, alemán o portugués. Si el documento está en otro idioma, se traduce el texto de las diapositivas con el traductor integrado del navegador (si está disponible) o con Google Translate. El idioma se puede cambiar después sin volver a subir el documento.
 
 ## Estructura
 
@@ -64,7 +64,7 @@ js/analyzer.js      Análisis del texto
 js/generator.js     Guion de diapositivas por nivel de detalle
 js/render.js        Renderizado y ajuste automático del texto
 js/themes.js        Plantillas, paletas, tipografías, decoraciones
-js/translate.js     Traducción al español
+js/translate.js     Traducción al idioma elegido
 js/export.js        Exportación a PDF
 js/app.js           Lógica de la interfaz
 js/sample.js        Documento de ejemplo

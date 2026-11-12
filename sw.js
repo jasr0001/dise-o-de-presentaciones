@@ -1,5 +1,5 @@
 /* Lumina Slides — Service worker: funciona sin conexión tras la primera visita */
-const VERSION = 'lumina-v2';
+const VERSION = 'lumina-v3';
 const CORE = [
   './', 'index.html', 'css/app.css', 'css/slides.css', 'css/fonts.css',
   'js/themes.js', 'js/parsers.js', 'js/analyzer.js', 'js/generator.js', 'js/render.js', 'js/translate.js', 'js/export.js', 'js/sample.js', 'js/app.js',
