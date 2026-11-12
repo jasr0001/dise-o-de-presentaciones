@@ -5,10 +5,10 @@
   const wc = (s) => (s.match(/\S+/g) || []).length;
 
   PD.levels = [
-    { id: 1, name: 'Esencial', desc: 'Lo imprescindible. Ideal para una exposición rápida de 5 minutos.', sections: 4, perSection: 1, bullets: 3, words: 14 },
-    { id: 2, name: 'Equilibrado', desc: 'Ideas principales con datos y contexto. Perfecto para clases y reuniones.', sections: 6, perSection: 1, bullets: 4, words: 20 },
-    { id: 3, name: 'Detallado', desc: 'Cada sección desarrollada, con separadores, cronología y conceptos.', sections: 9, perSection: 2, bullets: 5, words: 26 },
-    { id: 4, name: 'Exhaustivo', desc: 'Cobertura extrema: todo el documento, glosario, referencias y notas completas.', sections: 18, perSection: 3, bullets: 6, words: 34 }
+    { id: 1, name: 'Esencial', desc: 'Lo imprescindible. Ideal para una exposición rápida de 5 minutos.', sections: 4, perSection: 1, bullets: 3, words: 12, budget: 36 },
+    { id: 2, name: 'Equilibrado', desc: 'Ideas principales con datos y contexto. Perfecto para clases y reuniones.', sections: 6, perSection: 1, bullets: 4, words: 15, budget: 50 },
+    { id: 3, name: 'Detallado', desc: 'Cada sección desarrollada, con separadores, cronología y conceptos.', sections: 9, perSection: 2, bullets: 4, words: 18, budget: 60 },
+    { id: 4, name: 'Exhaustivo', desc: 'Cobertura amplia del documento, con glosario, referencias y notas completas.', sections: 14, perSection: 3, bullets: 5, words: 20, budget: 70 }
   ];
 
   PD.elementList = [
@@ -149,12 +149,13 @@
         group.push({ id: id(), type: 'divider', number: si + 1, title: s.title, subtitle: best ? PD.compress(best.text, 16) : '', notes: '' });
       }
       const room = lv.bullets;
-      const nSlides = Math.max(1, Math.min(lv.perSection, Math.ceil(s.sentences.length / (room * 1.7))));
+      // Diapositivas según la extensión real de la sección: lo breve se cuenta en una sola
+      const nSlides = Math.max(1, Math.min(lv.perSection, Math.round(s.words / 130)));
       // Prefiere elementos de lista si la sección es básicamente una lista
-      const pool = el.quote ? s.rank.filter((x) => !x.isQuote) : s.rank;
+      const pool = (el.quote ? s.rank.filter((x) => !x.isQuote) : s.rank).filter((x) => !x.junk);
       const chosen = pickSentences(pool, room * nSlides, taken).sort((a, b) => a.pos - b.pos);
       // Reparte las frases en diapositivas respetando un presupuesto de palabras para que nunca se desborden
-      const budget = 82;
+      const budget = lv.budget;
       const chunks = [];
       let cur = [], words = 0;
       chosen.forEach((x) => {
@@ -164,7 +165,7 @@
       });
       if (cur.length) chunks.push(cur);
       // Si salen demasiadas, conserva las frases más importantes
-      while (chunks.length > nSlides + (lv.id >= 3 ? 1 : 0)) {
+      while (chunks.length > nSlides) {
         const all = chunks.flat();
         const drop = all.slice().sort((a, b) => a.score - b.score)[0];
         const c = chunks.find((ch) => ch.includes(drop));
@@ -237,13 +238,13 @@
     /* Conclusiones */
     if (el.conclusions) {
       let picks;
-      if (conclusion) picks = pickSentences(conclusion.rank, lv.bullets, taken).sort((a, b) => a.pos - b.pos);
+      if (conclusion) picks = pickSentences(conclusion.rank.filter((x) => !x.junk), Math.min(lv.bullets, 4), taken).sort((a, b) => a.pos - b.pos);
       if (!picks || picks.length < 2) {
         const all = A.sections.flatMap((s) => s.sentences);
         const tail = all.slice(Math.floor(all.length * 0.7));
         const cue = /(en conclusi[oó]n|en resumen|por (lo )?tanto|en definitiva|finalmente|se concluye|in conclusion|overall|therefore|in summary|ultimately)/i;
         const ranked = [...tail.filter((x) => cue.test(x.text)), ...tail.slice().sort((a, b) => b.score - a.score), ...all.slice().sort((a, b) => b.score - a.score)];
-        picks = pickSentences(ranked, Math.min(lv.bullets, 4), taken);
+        picks = pickSentences(ranked.filter((x) => !x.junk), Math.min(lv.bullets, 4), taken);
       }
       if (picks.length) slides.push({ id: id(), type: 'conclusions', title: conclusion && !conclusion.autoTitle ? conclusion.title : lab.conclusions, bullets: picks.map((p) => PD.compress(p.text, maxW)), notes: picks.map((p) => p.text).join(' ') });
     }
@@ -258,6 +259,16 @@
       slides.push({ id: id(), type: 'closing', title: lab.thanks, subtitle: lab.questions, kicker: opts.title || A.title, author: opts.author || A.author || '', keywords: A.keywords.slice(0, 5).map((k) => k.term), notes: '' });
     }
 
+    // Ninguna diapositiva supera el presupuesto de palabras: lo que sobra pasa a las notas del orador
+    const words = (arr) => arr.reduce((a, t) => a + wc(typeof t === 'string' ? t : (t.term || '') + ' ' + (t.def || '')), 0);
+    slides.forEach((sl) => {
+      ['bullets', 'items'].forEach((k) => {
+        const arr = sl[k];
+        if (!Array.isArray(arr) || sl.type === 'agenda' || sl.type === 'references') return;
+        const limit = (sl.statement ? lv.budget - wc(sl.statement) : lv.budget) + (sl.type === 'glossary' ? 30 : 0);
+        while (arr.length > 2 && words(arr) > limit) arr.pop();
+      });
+    });
     return slides;
   };
 })();

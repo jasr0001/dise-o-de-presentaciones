@@ -112,6 +112,27 @@
   }
   PD.stripRunIn = stripRunIn;
 
+  /* Frases que en realidad son restos de tablas, notas al pie o encabezados del PDF */
+  const LINKERS = new Set(['the', 'of', 'in', 'at', 'by', 'from', 'to', 'and', 'or', 'for', 'with', 'on', 'de', 'del', 'la', 'el', 'los', 'las', 'en', 'y', 'e', 'o', 'a', 'al', 'con', 'por', 'para', 'le', 'les', 'des', 'du', 'et', 'der', 'die', 'das', 'und', 'von', 'da', 'do', 'dos', 'das', 'em', 'no', 'na']);
+  const BOILER = /\b(ICMJE|disclosure form|conflicts? of interests?|competing interests?|financial relationships?|declared? that they have no|no (financial|competing)|funding (was|from)|this (work|study|research) (was|received) (funded|supported)|grant (no\.?|number)|informed consent (was|has been) obtained|consent (was|has been) obtained|ethics committee|institutional review board|IRB approval|human subjects|animal subjects|author contributions?|concept and design|drafting of the manuscript|critical review of the manuscript|acquisition, analysis|supervision:|copyright|creative commons|open access|distributed under the terms|corresponding author|e-?mail:|doi:|https?:\/\/|cite this article|received:|accepted:|published:|conflictos? de intereses?|no (tienen|existen) conflictos|declaran que no|consentimiento informado|comit[eé] de [eé]tica|financiaci[oó]n|autor de correspondencia)\b/i;
+  function isJunk(t) {
+    if (BOILER.test(t)) return true;
+    if (/[†‡§¶]/.test(t)) return true;
+    if (/^\W*(NA|N\/A|NR|ND)\b/.test(t)) return true;
+    if (/^[^\p{L}\d“"«(¿¡]/u.test(t)) return true;
+    const w = t.split(/\s+/);
+    let cells = 0;
+    for (let i = 1; i < w.length; i++) {
+      const prev = w[i - 1].toLowerCase().replace(/[^\p{L}]/gu, '');
+      if (/^\p{Lu}\p{Ll}+$/u.test(w[i]) && /^\p{Ll}+$/u.test(w[i - 1]) && !LINKERS.has(prev)) cells++;
+    }
+    if (cells >= 3 && !/[.;:]\s/.test(t)) return true;
+    const letters = (t.match(/\p{L}/gu) || []).length;
+    if (letters < t.length * 0.55) return true;
+    return false;
+  }
+  PD.isJunk = isJunk;
+
   /* ---------- Compresión de frases a viñetas ---------- */
   function compress(sentence, maxWords, opts = {}) {
     let s = sentence.trim();
@@ -144,7 +165,7 @@
   PD.compress = compress;
 
   /* ---------- Secciones ---------- */
-  const SKIP_SECTION = /^(referencias|bibliograf[ií]a|references|bibliography|works cited|agradecimientos|acknowledg(e)?ments?|[ií]ndice|table of contents|contents|contenido|anexos?|ap[eé]ndices?|appendix|notas|notes|conflict of interest|conflicto de intereses|funding|financiaci[oó]n|author contributions|declaraci[oó]n)\b/i;
+  const SKIP_SECTION = /^(referencias|bibliograf[ií]a|references|bibliography|works cited|agradecimientos|acknowledg(e)?ments?|[ií]ndice|table of contents|contents|contenido|anexos?|ap[eé]ndices?|appendix|notas|notes|conflicts? of interests?|competing interests?|conflictos? de intereses?|funding|financiaci[oó]n|financial (disclosure|relationships?)|author(s'?)? contributions?|contribuci[oó]n de (los )?autores|additional information|informaci[oó]n adicional|declaraci[oó]n|declarations?|disclosures?|ethics( statement| approval)?|[eé]tica|informed consent|consentimiento( informado)?|data availability|disponibilidad de (los )?datos|supplementary( materials?| information)?|material suplementario|abbreviations|abreviaturas|keywords|palabras clave|corresponding author|autor de correspondencia|about the authors?|sobre (los|el) autor(es)?|publication history|article history|copyright|license|licencia|open access|how to cite|c[oó]mo citar|received|recibido|accepted|aceptado)\b/i;
   const ABSTRACT = /^(resumen|abstract|summary|s[ií]ntesis|executive summary|resumen ejecutivo)\b/i;
   const CONCL = /^(\d+[.)]?\s*)?(conclusi[oó]n(es)?|conclusions?|discusi[oó]n|discussion|consideraciones finales|reflexiones finales|final remarks|closing|cierre|recomendaciones)\b/i;
   const REFS = /^(referencias|bibliograf[ií]a|references|bibliography|works cited)\b/i;
@@ -341,6 +362,7 @@
       if (/https?:\/\/|www\.|@\w+\.\w/.test(x.text)) sc *= 0.4;
       if (/\?$/.test(x.text)) sc *= 0.8;
       if (/^[“"«]/.test(x.text) || /[”"»],?\s*(afirm|dijo|señal|explic|said|says)/i.test(x.text)) { sc *= 0.45; x.isQuote = true; }
+      if (isJunk(x.text)) { sc *= 0.05; x.junk = true; }
       x.score = sc;
       maxScore = Math.max(maxScore, sc);
     });

@@ -1,8 +1,8 @@
 /* Lumina Slides — Service worker: funciona sin conexión tras la primera visita */
-const VERSION = 'lumina-v3';
+const VERSION = 'lumina-v5';
 const CORE = [
-  './', 'index.html', 'css/app.css', 'css/slides.css', 'css/fonts.css',
-  'js/themes.js', 'js/parsers.js', 'js/analyzer.js', 'js/generator.js', 'js/render.js', 'js/translate.js', 'js/export.js', 'js/sample.js', 'js/app.js',
+  './', 'index.html',
+
   'vendor/html2canvas.min.js', 'vendor/jspdf.umd.min.js', 'manifest.webmanifest', 'assets/icon-512.png'
 ];
 
@@ -27,7 +27,7 @@ self.addEventListener('fetch', (e) => {
     })));
   } else {
     // Código de la app: primero red para recibir siempre la última versión
-    e.respondWith(fetch(req).then((res) => {
+    e.respondWith(fetch(req, { cache: 'no-cache' }).then((res) => {
       if (res.ok) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(req, copy)); }
       return res;
     }).catch(() => caches.match(req).then((hit) => hit || caches.match('index.html'))));
