@@ -85,6 +85,10 @@
     if (n === 2) renderDesign();
     if (n === 3) renderContent();
     if (n === 4) renderEditor();
+    if (n === 3 || n === 4) {
+      const before = state.slides;
+      paginateDeck().then(() => { if (state.slides !== before) { if (state.step === 3) renderContent(); if (state.step === 4) renderEditor(); } });
+    }
     if (scroll) $('#studio').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   function unlock(n) { state.maxStep = Math.max(state.maxStep, n); }
@@ -221,7 +225,7 @@
     countUp($('#ins-years'), A.timeline.length);
     $('#ins-lang').textContent = A.srcLang === state.outLang ? A.srcLang.toUpperCase() : A.srcLang.toUpperCase() + '→' + state.outLang.toUpperCase();
     $('#ins-kws').innerHTML = A.keywords.slice(0, 14).map((k, i) => `<span style="animation-delay:${i * 40}ms">${esc(k.term)}</span>`).join('');
-    $('#ins-outline').innerHTML = A.sections.slice(0, 16).map((s) => `<li>${esc(s.title)}</li>`).join('');
+    $('#ins-outline').innerHTML = A.sections.filter((s) => !s.isAbstract || A.sections.length <= 2).slice(0, 16).map((s) => `<li>${esc(s.title)}</li>`).join('');
   }
 
   /* ================= Generación ================= */
@@ -286,8 +290,20 @@
         translateWarned = true;
       }
     }
+    await paginateDeck(true);
     state.current = Math.min(state.current, state.slides.length - 1);
   }
+
+  // Divide lo que no cabe en las diapositivas necesarias (medido con las fuentes del dispositivo)
+  let paginatedFor = '';
+  async function paginateDeck(force) {
+    const th = theme();
+    const key = th.tpl + '|' + th.font.id + '|' + state.slides.length + '|' + state.outLang;
+    if (!force && key === paginatedFor) return;
+    state.slides = await PD.paginate(state.slides, th, { part: (state.analysis && state.analysis.labels.part) || 'Parte' });
+    paginatedFor = th.tpl + '|' + th.font.id + '|' + state.slides.length + '|' + state.outLang;
+  }
+  PD.paginateDeck = paginateDeck;
 
   // Bloquea la interfaz mientras se regenera (y se traduce) el contenido
   async function regenerateBusy() {
@@ -692,6 +708,7 @@
   modal.addEventListener('click', (e) => { if (e.target === modal || e.target.closest('[data-close]')) modal.classList.add('hidden'); });
   $('#exp-go').addEventListener('click', async () => {
     const mode = $('input[name="exp-mode"]:checked').value;
+    await paginateDeck(true);
     const th = theme();
     if (mode === 'vector') {
       modal.classList.add('hidden');
@@ -886,6 +903,11 @@
       PD.loadFont(font).then(() => PD.fitSlide(item.querySelector('.slide')));
     });
   })();
+
+  if (document.fonts && document.fonts.addEventListener) {
+    let t;
+    document.fonts.addEventListener('loadingdone', () => { clearTimeout(t); t = setTimeout(() => $$('.thumb > .slide').forEach((el) => PD.fitSlide(el)), 120); });
+  }
 
   // Avisos de actualización (ver index.html)
   window.__luminaHasWork = () => !!state.analysis;

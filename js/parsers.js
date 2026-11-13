@@ -293,11 +293,19 @@
     pages.forEach((lines) => {
       lastY = null;
       lines.forEach((l, li) => {
-        if (l.table) { flushTable(); flush(); blocks.push({ type: 'table', rows: l.table }); lastY = l.y; return; }
+        if (l.table) {
+          let rows = l.table;
+          if (table && table.rows.length && table.rows[table.rows.length - 1].length <= rows[0].length + 1) { rows = table.rows.concat(rows); table = null; }
+          else flushTable();
+          flush();
+          blocks.push({ type: 'table', rows });
+          lastY = l.y;
+          return;
+        }
         const t = l.text.trim();
         if (repeated.has(norm(t))) return;
         const nextL = lines[li + 1];
-        if (l.isRow && l.size < body * 1.12 && (table || (nextL && (nextL.isRow || (nextL.text.length < 60 && nextL.size < body * 1.12 && Math.abs(nextL.y - l.y) < l.size * 2.6))))) {
+        if (l.isRow && l.size < body * 1.12 && (table || (nextL && (nextL.isRow || nextL.table || (nextL.text.length < 60 && nextL.size < body * 1.12 && Math.abs(nextL.y - l.y) < l.size * 2.6))))) {
           if (!table) { flush(); table = { rows: [], raw: [], xs: l.parts.map((q) => q.x) }; }
           const row = new Array(table.xs.length).fill('');
           l.parts.forEach((q) => {
@@ -352,8 +360,17 @@
 
     // Párrafos que cruzan de página: une si el anterior no termina en punto
     const merged = [];
-    blocks.forEach((b) => {
+    const CAPTION = /^(table|tabla|tableau|tabelle|tabela|tabella)\s+\d+[.:]?\s*/i;
+    blocks.forEach((b, bi) => {
       const prev = merged[merged.length - 1];
+      if (b.type === 'table') {
+        // Filas sin primera columna = continuación de la fila anterior
+        b.rows = b.rows.reduce((acc, r) => { const pr = acc[acc.length - 1]; if (pr && !r[0] && r.some(Boolean)) r.forEach((c, k) => { if (c) pr[k] = pr[k] ? pr[k] + ' ' + c : c; }); else acc.push(r); return acc; }, []);
+      }
+      if (b.type === 'para' && CAPTION.test(b.text) && b.text.length < 260) {
+        const nxt = blocks.slice(bi + 1, bi + 3).find((x) => x.type === 'table');
+        if (nxt) { nxt.caption = b.text.replace(CAPTION, '').trim(); return; }
+      }
       // Tabla que continúa en la página siguiente: se une en una sola (sin repetir el encabezado)
       if (prev && prev.type === 'table' && b.type === 'table' && prev.rows[0].length === b.rows[0].length) {
         const same = b.rows[0].join('|') === prev.rows[0].join('|');
@@ -386,7 +403,7 @@
       // Un salto grande hacia arriba es un cambio de columna del texto, no una celda
       if (b.y - a.y > size * 7) continue;
       let start = i - 1;
-      while (start > 0 && short(lines[start - 1]) && !(lines[start - 1].size > Math.min(a.size, b.size) * 1.15) && lines[start - 1].y - lines[start].y < size * 3.2 && lines[start - 1].y >= lines[start].y - 2 * size * 0 - 1 && !used.has(start - 1)) start--;
+      while (start > 0 && short(lines[start - 1]) && (lines[start - 1].parts || []).length >= 2 && !(lines[start - 1].size > Math.min(a.size, b.size) * 1.15) && lines[start - 1].y - lines[start].y < size * 3.6 && lines[start - 1].y >= lines[start].y - 2 * size * 0 - 1 && !used.has(start - 1)) start--;
       let end = i;
       let minY = Math.min(a.y, b.y), maxY = Math.max(a.y, b.y);
       for (let k = start; k <= i; k++) { minY = Math.min(minY, lines[k].y); maxY = Math.max(maxY, lines[k].y); }
@@ -406,13 +423,19 @@
       // Filas: bandas verticales separadas por un hueco mayor que el interlineado
       const ys = [...new Set(segs.map((q) => q.y))].sort((m, n) => n - m);
       const bands = [];
-      ys.forEach((y) => { const last = bands[bands.length - 1]; if (!last || last.lo - y > size * 1.35) bands.push({ hi: y, lo: y }); else last.lo = y; });
+      ys.forEach((y) => { const last = bands[bands.length - 1]; if (!last || last.lo - y > size * 1.55) bands.push({ hi: y, lo: y }); else last.lo = y; });
       if (bands.length < 2) continue;
       const rows = bands.map((band) => {
         const r = new Array(cols.length).fill('');
         segs.filter((q) => q.y <= band.hi && q.y >= band.lo).sort((m, n) => n.y - m.y || m.x - n.x).forEach((q) => { const c = colOf(Math.round(q.x)); r[c] = r[c] ? r[c] + ' ' + q.text : q.text; });
         return r.map((c) => c.replace(/\s+/g, ' ').trim());
-      }).filter((r) => r.filter(Boolean).length >= 2);
+      }).reduce((acc, r) => {
+        // Una fila sin primera columna es la continuación de la anterior
+        const prev = acc[acc.length - 1];
+        if (prev && !r[0] && r.some(Boolean)) r.forEach((c, k) => { if (c) prev[k] = prev[k] ? prev[k] + ' ' + c : c; });
+        else acc.push(r);
+        return acc;
+      }, []).filter((r) => r.filter(Boolean).length >= 2);
       if (rows.length < 2) continue;
       const cells = rows.flat().filter(Boolean).map((c) => c.length).sort((m, n) => m - n);
       const median = cells[Math.floor(cells.length / 2)] || 0;
