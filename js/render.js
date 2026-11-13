@@ -154,6 +154,76 @@
   };
 
   /* Ajuste automático del texto para que nunca desborde */
+  /* Divide las diapositivas que solo caben reduciendo mucho la letra.
+     Se mide con las fuentes reales del dispositivo, así nunca queda texto fuera. */
+  PD.paginate = async function (slides, theme, opts) {
+    const minFs = (opts && opts.minFs) || 0.84;
+    const part = (opts && opts.part) || 'Parte';
+    await PD.loadFont(theme.font);
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;left:-20000px;top:0;width:1280px;height:720px;overflow:hidden;visibility:hidden';
+    document.body.appendChild(box);
+    const fsOf = (s, i, n) => {
+      box.innerHTML = PD.renderSlide(s, i, n, theme);
+      const el = box.firstElementChild;
+      PD.fitSlide(el);
+      const inner = el.querySelector('.s-inner'), body = el.querySelector('.s-body') || inner;
+      const over = body.scrollHeight > body.clientHeight + 1 || inner.scrollHeight > inner.clientHeight + 1;
+      return over ? 0 : parseFloat(el.style.getPropertyValue('--fs') || '1');
+    };
+    const out = [];
+    let changed = false;
+    const queue = slides.slice();
+    while (queue.length) {
+      const s = queue.shift();
+      const key = Array.isArray(s.bullets) ? 'bullets' : Array.isArray(s.items) && s.type !== 'agenda' && s.type !== 'references' ? 'items' : null;
+      let fs = fsOf(s, out.length, slides.length);
+      // Conceptos clave: se quitan los menos importantes hasta que quepan
+      if (fs < minFs && s.type === 'concepts' && Array.isArray(s.keywords)) {
+        while (s.keywords.length > 5 && fsOf(s, out.length, slides.length) < minFs) { s.keywords.pop(); changed = true; }
+        out.push(s); continue;
+      }
+      if (fs >= minFs || !key) { out.push(s); continue; }
+      // Primero, una distribución más holgada
+      if (s.type === 'content' && s.layout !== 'bullets' && s.layout !== 'image') {
+        if (s.statement) { s.bullets.unshift(s.statement); s.statement = ''; }
+        s.layout = 'bullets';
+        changed = true;
+        fs = fsOf(s, out.length, slides.length);
+        if (fs >= minFs) { out.push(s); continue; }
+      }
+      const arr = s[key];
+      if (arr.length < 2) { out.push(s); continue; }
+      const cut = Math.ceil(arr.length / 2);
+      const rest = JSON.parse(JSON.stringify(s));
+      rest.id = s.id + 'p' + Math.random().toString(36).slice(2, 6);
+      s[key] = arr.slice(0, cut);
+      rest[key] = arr.slice(cut);
+      rest._cont = true;
+      if (rest.image) rest.image = null, rest.layout = 'bullets';
+      changed = true;
+      queue.unshift(s, rest);
+    }
+    box.remove();
+    if (!changed) return slides;
+    // Numeración «Parte 1/3» en las diapositivas de una misma sección
+    for (let i = 0; i < out.length; i++) {
+      const s = out[i];
+      if (!s._cont && !(out[i + 1] && out[i + 1]._cont && out[i + 1].title === s.title)) continue;
+      let j = i;
+      while (j + 1 < out.length && out[j + 1].type === s.type && out[j + 1].title === s.title) j++;
+      const n = j - i + 1;
+      for (let k = i; k <= j; k++) {
+        const kk = out[k].kicker || '';
+        if (!kk || /^\S+ \d+\/\d+$/.test(kk) || /^\d{2}$/.test(kk)) out[k].kicker = n > 1 ? `${part} ${k - i + 1}/${n}` : kk;
+        delete out[k]._cont;
+      }
+      i = j;
+    }
+    return out;
+  };
+
   PD.fitSlide = function (el) {
     const slide = el.classList.contains('slide') ? el : el.querySelector('.slide');
     if (!slide) return;

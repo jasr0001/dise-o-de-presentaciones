@@ -148,7 +148,7 @@
       const group = [];
       if (el.dividers) {
         const best = s.rank[0];
-        group.push({ id: id(), type: 'divider', number: si + 1, title: s.title, subtitle: best ? PD.compress(best.text, 16) : '', notes: '' });
+        group.push({ id: id(), type: 'divider', number: si + 1, title: s.title, subtitle: best ? PD.compress(best.text, 22) : '', notes: '' });
       }
       const room = lv.bullets;
       // Diapositivas según la extensión real de la sección: lo breve se cuenta en una sola
@@ -218,7 +218,7 @@
       if (el.images) s.images.slice(1, lv.id >= 4 ? 4 : 2).forEach((im, n) => group.push({ id: id(), type: 'image', title: s.title, image: { src: im.src, alt: im.alt || '' }, caption: im.alt || `${lab.figure} ${n + 2}`, notes: '' }));
       if (el.tables) s.tables.slice(0, lv.id >= 4 ? 2 : 1).forEach((t) => {
         const rows = t.rows.filter((r) => r.some((c) => c)).slice(0, 8).map((r) => r.slice(0, 6).map((c) => (c.length > 60 ? c.slice(0, 57) + '…' : c)));
-        if (rows.length >= 2 && rows[0].length >= 2) group.push({ id: id(), type: 'table', title: s.title, kicker: lab.table, rows, notes: '' });
+        if (rows.length >= 2 && rows[0].length >= 2) group.push({ id: id(), type: 'table', title: s.title, kicker: t.caption ? PD.compress(t.caption, 9) : lab.table, rows, notes: t.caption || '' });
       });
       content.push(group);
     });

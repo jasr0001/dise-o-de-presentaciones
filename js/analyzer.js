@@ -117,6 +117,11 @@
   const BOILER = /\b(ICMJE|disclosure form|conflicts? of interests?|competing interests?|financial relationships?|declared? that they have no|no (financial|competing)|funding (was|from)|this (work|study|research) (was|received) (funded|supported)|grant (no\.?|number)|informed consent (was|has been) obtained|consent (was|has been) obtained|ethics committee|institutional review board|IRB approval|human subjects|animal subjects|author contributions?|concept and design|drafting of the manuscript|critical review of the manuscript|acquisition, analysis|supervision:|copyright|creative commons|open access|distributed under the terms|corresponding author|e-?mail:|doi:|https?:\/\/|cite this article|received:|accepted:|published:|conflictos? de intereses?|no (tienen|existen) conflictos|declaran que no|consentimiento informado|comit[eé] de [eé]tica|financiaci[oó]n|autor de correspondencia)\b/i;
   function isJunk(t) {
     if (BOILER.test(t)) return true;
+    // Afiliación: «NIHR Global Surgery Unit, University of Birmingham, Birmingham, UK»
+    if (AFFIL.test(t) && (t.match(/,/g) || []).length >= 2 && !/\b(is|are|was|were|has|have|es|son|fue|fueron|ha|han|est|sont|ist|sind|é|são)\b/i.test(t)) return true;
+    // Lista de autores: muchas comas y casi todo nombres propios
+    const ws = t.split(/\s+/);
+    if ((t.match(/,/g) || []).length >= 3 && ws.filter((w) => /^\p{Lu}/u.test(w)).length > ws.length * 0.7) return true;
     if (/[†‡§¶]/.test(t)) return true;
     if (/^\W*(NA|N\/A|NR|ND)\b/.test(t)) return true;
     if (/^[^\p{L}\d“"«(¿¡]/u.test(t)) return true;
@@ -146,7 +151,7 @@
     if (qo !== qc || ((s.match(/"/g) || []).length % 2)) s = s.replace(/[“”«»"]/g, '');
     s = s.replace(/[.;:,\s]+$/, '');
     const words = s.split(' ');
-    if (words.length > maxWords) {
+    if (words.length > Math.round(maxWords * 1.35)) {
       // Corta en un límite de cláusula si es posible
       const limit = words.slice(0, maxWords + 1).join(' ');
       const cut = Math.max(limit.lastIndexOf(';'), limit.lastIndexOf(':'), limit.lastIndexOf(','), limit.lastIndexOf(' – '), limit.lastIndexOf(' — '));
@@ -167,6 +172,9 @@
   /* ---------- Secciones ---------- */
   const SKIP_SECTION = /^(referencias|bibliograf[ií]a|references|bibliography|works cited|agradecimientos|acknowledg(e)?ments?|[ií]ndice|table of contents|contents|contenido|anexos?|ap[eé]ndices?|appendix|notas|notes|conflicts? of interests?|competing interests?|conflictos? de intereses?|funding|financiaci[oó]n|financial (disclosure|relationships?)|author(s'?)? contributions?|contribuci[oó]n de (los )?autores|additional information|informaci[oó]n adicional|declaraci[oó]n|declarations?|disclosures?|ethics( statement| approval)?|[eé]tica|informed consent|consentimiento( informado)?|data availability|disponibilidad de (los )?datos|supplementary( materials?| information)?|material suplementario|abbreviations|abreviaturas|keywords|palabras clave|corresponding author|autor de correspondencia|about the authors?|sobre (los|el) autor(es)?|publication history|article history|copyright|license|licencia|open access|how to cite|c[oó]mo citar|received|recibido|accepted|aceptado)\b/i;
   const ABSTRACT = /^(resumen|abstract|summary|s[ií]ntesis|executive summary|resumen ejecutivo)\b/i;
+  const INTRO = /^(\d+[.)]?\s*)?(introduc(tion|ci[oó]n|tion)|background|antecedentes|einleitung|hintergrund|introdu[çc][aã]o|contexte|contexto|overview)\b/i;
+  const AFFIL = /\b(universit(y|é|ät|ad|à|ade)|department|departamento|d[ée]partement|institut[eo]?|unit|unidad|hospital|school of|facultad|faculty|college|centre|center|centro|nhs|trust|laborator(y|io))\b[^.]*,/i;
+  const STRUCT_LABEL = /\b(introduction|background|aims?|objectives?|purpose|methods?|results?|findings|conclusions?|discussion|introducci[oó]n|objetivos?|m[eé]todos|resultados|conclusi[oó]n(es)?|discusi[oó]n)\s*:/gi;
   const CONCL = /^(\d+[.)]?\s*)?(conclusi[oó]n(es)?|conclusions?|discusi[oó]n|discussion|consideraciones finales|reflexiones finales|final remarks|closing|cierre|recomendaciones)\b/i;
   const REFS = /^(referencias|bibliograf[ií]a|references|bibliography|works cited)\b/i;
 
@@ -206,11 +214,20 @@
     if (cur.blocks.length || cur.title) sections.push(cur);
 
     const kept = [];
-    sections.forEach((s) => {
+    const same = (a, b) => a && b && a.trim().toLowerCase() === b.trim().toLowerCase();
+    let firstReal = sections.findIndex((x) => INTRO.test(x.title));
+    if (firstReal < 0) firstReal = sections.findIndex((x) => x.title && !same(x.title, title) && !AFFIL.test(x.title) && !ABSTRACT.test(x.title) && x.blocks.length > 1);
+    sections.forEach((s, si) => {
       if (REFS.test(s.title)) { refBlocks = s.blocks; return; }
       if (SKIP_SECTION.test(s.title)) return;
-      s.isAbstract = ABSTRACT.test(s.title);
+      const text = s.blocks.map((b) => b.text || (b.items || []).join(' ')).join(' ');
+      const labels = (text.match(STRUCT_LABEL) || []).length;
+      const isDocTitle = title && s.title && s.title.trim().toLowerCase() === title.trim().toLowerCase();
+      s.isAbstract = ABSTRACT.test(s.title) || labels >= 2 || (si < firstReal && (!s.title || isDocTitle || AFFIL.test(s.title) || /^abstract\b|^resumen\b/i.test(text)));
+      if (isDocTitle) s.title = '';
       s.isConclusion = CONCL.test(s.title);
+      // Un título que es una afiliación («NIHR Global Surgery Unit, University of…») nunca nombra una sección
+      if (AFFIL.test(s.title)) { s.title = ''; s.isAbstract = true; }
       kept.push(s);
     });
     return { title, sections: kept, refBlocks };
@@ -289,7 +306,9 @@
         if (b.type === 'para') {
           splitSentences(b.text).forEach((t, k) => {
             for (let r = 0; r < 3; r++) { const u = stripRunIn(t); if (u === t) break; t = u; }
-            const o = { text: t, section: si, sub, firstInPara: k === 0, pos: s.sentences.length };
+            t = t.replace(/^(introduction|background|aims?|objectives?|purpose|methods?|results?|findings|conclusions?|discussion|introducci[oó]n|objetivos?|m[eé]todos|resultados|conclusi[oó]n(es)?|discusi[oó]n|abstract|resumen)\s*:\s*/i, '');
+            t = t.charAt(0).toUpperCase() + t.slice(1);
+            const o = { text: t, section: si, sub, firstInPara: k === 0, pos: s.sentences.length, junk: isJunk(t) };
             s.sentences.push(o); allSentences.push(o);
           });
         } else if (b.type === 'list') {
@@ -326,7 +345,7 @@
     sections.forEach((s) => {
       const seen = new Set();
       s.sentences.forEach((x) => {
-        x.tokens = tokenize(x.text).filter(isContent);
+        x.tokens = x.junk ? [] : tokenize(x.text).filter(isContent);
         x.stems = x.tokens.map(stem);
         x.stems.forEach((st, k) => {
           tf[st] = (tf[st] || 0) + 1;
@@ -372,6 +391,7 @@
     /* Palabras clave (unigramas + bigramas) */
     const bigrams = {};
     allSentences.forEach((x) => {
+      if (x.junk) return;
       const toks = tokenize(x.text);
       for (let i = 0; i < toks.length - 1; i++) {
         if (isContent(toks[i]) && isContent(toks[i + 1])) {
@@ -475,10 +495,14 @@
 
     /* Cronología */
     const events = [];
+    // Solo fechas narrativas («En 1984 se inauguró…», «In 2015 the…»), no plazos ni fechas de publicación
+    const NARR = /(^|\b(en|in|desde|since|hacia|durante|a partir de|im|em|au|dans|seit|depuis|until|hasta)\s+(el\s+|the\s+|o\s+|le\s+)?(año\s+|year\s+)?)(1[5-9]\d{2}|20\d{2})\b/i;
     allSentences.forEach((x) => {
-      const m = x.text.match(/\b(1[5-9]\d{2}|20\d{2})\b/g);
-      if (!m) return;
-      const year = m[0];
+      if (x.junk) return;
+      const nm = x.text.match(NARR);
+      if (!nm) return;
+      const year = nm[5];
+      if (/(inception|publicad|published|received|recibid|accepted|aceptad)/i.test(x.text)) return;
       if (/\(\s*[^()]*\b(19|20)\d{2}[a-z]?\s*\)/.test(x.text) && m.length === 1 && /et al|,\s*(19|20)\d{2}\)/.test(x.text)) return; // probablemente cita
       let txt = x.text.replace(new RegExp('^(en|in|desde|since|hacia|durante|a partir de|en el año)\\s+(el\\s+)?(año\\s+)?' + year + '\\s*,?\\s*', 'i'), '');
       events.push({ year: +year, label: year, text: compress(txt, 14), score: x.score });
@@ -526,7 +550,7 @@
     let subtitle = '';
     const abs = sections.find((s) => s.isAbstract);
     const firstGood = (abs || sections[0])?.rank?.[0];
-    if (firstGood) subtitle = compress(firstGood.text, 18);
+    if (firstGood) subtitle = compress(firstGood.text, 24);
 
     const tables = sections.flatMap((s) => s.tables.map((t) => ({ ...t, section: s.title })));
     const images = sections.flatMap((s) => s.images.map((im) => ({ ...im, section: s.title })));
