@@ -1,5 +1,5 @@
 /* Lumina Slides — Service worker: funciona sin conexión tras la primera visita */
-const VERSION = 'lumina-2026.11.13-8';
+const VERSION = 'lumina-2026.11.13-9';
 const CORE = [
   './', 'index.html',
 

@@ -154,10 +154,25 @@
   };
 
   /* Ajuste automático del texto para que nunca desborde */
+  // ¿Se sale el contenido? Se mide con la posición real de cada línea, no solo con scrollHeight
+  function overflows(inner, body) {
+    if (body.scrollHeight > body.clientHeight + 1 || inner.scrollHeight > inner.clientHeight + 1 || body.scrollWidth > body.clientWidth + 2) return true;
+    const box = body.getBoundingClientRect();
+    if (!box.height) return false;
+    const tol = box.height * 0.004 + 1;
+    const nodes = body.querySelectorAll('li, p, .tx, .stat, .card, .ev, .row, .chip, .g, tr, blockquote, figure, img');
+    for (const n of nodes) {
+      const r = n.getBoundingClientRect();
+      if (r.height && (r.bottom > box.bottom + tol || r.top < box.top - tol)) return true;
+    }
+    return false;
+  }
+  PD.overflows = (el) => { const inner = el.querySelector('.s-inner'); return inner ? overflows(inner, el.querySelector('.s-body') || inner) : false; };
+
   /* Divide las diapositivas que solo caben reduciendo mucho la letra.
      Se mide con las fuentes reales del dispositivo, así nunca queda texto fuera. */
   PD.paginate = async function (slides, theme, opts) {
-    const minFs = (opts && opts.minFs) || 0.84;
+    const minFs = (opts && opts.minFs) || 0.86;
     const part = (opts && opts.part) || 'Parte';
     await PD.loadFont(theme.font);
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
@@ -169,7 +184,7 @@
       const el = box.firstElementChild;
       PD.fitSlide(el);
       const inner = el.querySelector('.s-inner'), body = el.querySelector('.s-body') || inner;
-      const over = body.scrollHeight > body.clientHeight + 1 || inner.scrollHeight > inner.clientHeight + 1;
+      const over = overflows(inner, body);
       return over ? 0 : parseFloat(el.style.getPropertyValue('--fs') || '1');
     };
     const out = [];
@@ -232,7 +247,7 @@
     const body = slide.querySelector('.s-body') || inner;
     if (!inner) return;
     let fs = 1;
-    const over = () => body.scrollHeight > body.clientHeight + 1 || inner.scrollHeight > inner.clientHeight + 1 || body.scrollWidth > body.clientWidth + 2;
+    const over = () => overflows(inner, body);
     let guard = 0;
     while (over() && fs > 0.52 && guard++ < 24) {
       fs -= 0.03;
