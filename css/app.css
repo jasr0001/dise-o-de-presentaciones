@@ -458,3 +458,4 @@ body.busy .lvl, body.busy #elements-grid, body.busy #deck-grid { opacity: .55; p
 body.busy .lang-pick { opacity: .55; pointer-events: none; }
 .lang-row.top { margin: 0 0 22px; padding: 16px; border-radius: 18px; background: rgba(47, 216, 240, .06); border: 1px solid rgba(47, 216, 240, .22); }
 .lang-row.top .mini-label { color: var(--ui-c); font-size: 12.5px; }
+.app-version { font-size: 12px; color: var(--ui-faint); letter-spacing: .04em; }
