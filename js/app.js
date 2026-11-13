@@ -474,6 +474,21 @@
     renderDeckGrid();
   }
 
+  // Revisión final en el propio dispositivo: si alguna diapositiva quedó desbordada, se vuelve a paginar
+  let healing = false;
+  function selfHeal(container, rerender) {
+    if (healing) return;
+    setTimeout(async () => {
+      const bad = $$('.slide', container).some((el) => PD.overflows(el) || parseFloat(el.style.getPropertyValue('--fs') || '1') < 0.8);
+      if (!bad) return;
+      healing = true;
+      const before = state.slides.length;
+      await paginateDeck(true);
+      healing = false;
+      if (state.slides.length !== before) rerender();
+    }, 900);
+  }
+
   function renderDeckGrid() {
     const g = $('#deck-grid');
     g.innerHTML = '';
@@ -485,6 +500,7 @@
       t.addEventListener('click', () => { state.current = i; unlock(4); goStep(4); });
     });
     $('#deck-count').textContent = state.slides.length + ' diapositivas';
+    selfHeal($('#deck-grid'), renderDeckGrid);
   }
 
   let metaTimer;
@@ -528,6 +544,7 @@
 
   function renderEditor() {
     renderThumbs();
+    selfHeal($('#ed-thumbs'), renderEditor);
     renderStage();
     renderQuick();
   }

@@ -178,7 +178,11 @@
   const CONCL = /^(\d+[.)]?\s*)?(conclusi[oó]n(es)?|conclusions?|discusi[oó]n|discussion|consideraciones finales|reflexiones finales|final remarks|closing|cierre|recomendaciones)\b/i;
   const REFS = /^(referencias|bibliograf[ií]a|references|bibliography|works cited)\b/i;
 
+  // Etiquetas de tipo de artículo que preceden al título («Research Article», «Case Report»…)
+  const ARTTYPE = /^(original\s+)?(research|review|systematic review|scoping review|meta-analysis|case report|case series|letter|editorial|commentary|perspective|short communication|brief report|clinical trial|study protocol|original|research article|review article|art[ií]culo( original| de investigaci[oó]n| de revisi[oó]n)?|revisi[oó]n( sistem[aá]tica)?|caso cl[ií]nico|reporte de caso|carta|comunicaci[oó]n breve)(\s+(article|paper|articles))?\.?$/i;
   function buildSections(blocks, docTitle) {
+    blocks = blocks.filter((b, i) => !(i < 6 && b.type === 'heading' && ARTTYPE.test(b.text.trim())));
+    if (docTitle && ARTTYPE.test(docTitle.trim())) docTitle = '';
     const heads = blocks.filter((b) => b.type === 'heading');
     let title = docTitle || '';
     let startIdx = 0;
@@ -190,6 +194,10 @@
       if (sameLevel === 1 || heads.length === 1 || (blocks[i0 + 1] && blocks[i0 + 1].type === 'heading' && blocks[i0 + 1].level >= h.level)) {
         if (!title || title.length < 4 || /^(untitled|documento|microsoft|sin t[ií]tulo)/i.test(title)) title = h.text;
         startIdx = blocks.indexOf(h) + 1;
+      } else if ((!title || title.length < 4) && i0 <= 1 && !INTRO.test(h.text) && !ABSTRACT.test(h.text) && !AFFIL.test(h.text) && h.text.split(/\s+/).length >= 3) {
+        // Encabezado inicial del mismo tamaño que las secciones: es el título del documento
+        title = h.text;
+        startIdx = i0 + 1;
       }
     }
     const body = blocks.slice(startIdx);
@@ -223,7 +231,8 @@
       const text = s.blocks.map((b) => b.text || (b.items || []).join(' ')).join(' ');
       const labels = (text.match(STRUCT_LABEL) || []).length;
       const isDocTitle = title && s.title && s.title.trim().toLowerCase() === title.trim().toLowerCase();
-      s.isAbstract = ABSTRACT.test(s.title) || labels >= 2 || (si < firstReal && (!s.title || isDocTitle || AFFIL.test(s.title) || /^abstract\b|^resumen\b/i.test(text)));
+      const hasIntro = sections.some((x) => INTRO.test(x.title));
+      s.isAbstract = ABSTRACT.test(s.title) || labels >= 2 || (hasIntro && si < firstReal) || (si < firstReal && (!s.title || isDocTitle || AFFIL.test(s.title) || /^abstract\b|^resumen\b/i.test(text)));
       if (isDocTitle) s.title = '';
       s.isConclusion = CONCL.test(s.title);
       // Un título que es una afiliación («NIHR Global Surgery Unit, University of…») nunca nombra una sección

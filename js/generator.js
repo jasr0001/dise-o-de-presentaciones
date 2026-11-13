@@ -102,7 +102,7 @@
 
     /* Resumen ejecutivo */
     if (el.summary) {
-      const picks = body.map((s) => s.rank[0]).filter(Boolean).sort((a, b) => b.score - a.score).slice(0, lv.id >= 4 ? 6 : lv.id >= 3 ? 5 : 4)
+      const picks = body.map((s) => s.rank.find((x) => !x.junk)).filter(Boolean).sort((a, b) => b.score - a.score).slice(0, lv.id >= 4 ? 6 : lv.id >= 3 ? 5 : 4)
         .sort((a, b) => a.section - b.section || a.pos - b.pos);
       if (picks.length >= 2) {
         slides.push({
