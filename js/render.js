@@ -146,7 +146,7 @@
     const foot = !big && (theme.opts.numbers || theme.opts.footer)
       ? `<footer class="s-foot">${theme.opts.footer ? `<span class="ft">${esc(theme.deckTitle || '')}</span>` : '<span></span>'}${theme.opts.numbers ? `<span class="pg">${String(index + 1).padStart(2, '0')}<i> / ${String(total).padStart(2, '0')}</i></span>` : ''}</footer>`
       : '';
-    return `<div class="slide tpl-${theme.tpl} type-${s.type} ${s.layout ? 'layout-' + s.layout : ''} ${theme.pal.dark ? 'is-dark' : 'is-light'}" style="${theme.vars}" data-id="${s.id}">
+    return `<div class="slide tpl-${theme.tpl} ${PD.tplClasses ? PD.tplClasses(theme.tpl) : ''} type-${s.type} ${s.layout ? 'layout-' + s.layout : ''} ${theme.pal.dark ? 'is-dark' : 'is-light'}" style="${theme.vars}" data-id="${s.id}">
       <div class="s-deco">${PD.decor(theme.tpl, s.type, index)}</div>
       ${fn(s, ctx)}
       ${foot}

@@ -12,10 +12,10 @@
     parsed: null,
     analysis: null,
     slides: [],
-    tpl: prefs.tpl || 'aurora',
-    palette: prefs.palette || 'lavanda',
+    tpl: prefs.tpl || 'boletin',
+    palette: prefs.palette || 'papel',
     custom: null,
-    font: prefs.font || 'moderna',
+    font: prefs.font || 'revista',
     level: prefs.level || 2,
     outLang: prefs.outLang || 'es',
     elements: null,
@@ -347,12 +347,16 @@
     return picks;
   }
 
+  let tplFilter = 'todas';
   function renderDesign() {
+    // Filtro de categorías
+    $('#tpl-filter').innerHTML = PD.templateCategories.map((c) => `<button type="button" class="${c.id === tplFilter ? 'sel' : ''}" data-cat="${c.id}">${c.name}</button>`).join('');
+    $$('#tpl-filter button').forEach((b) => b.addEventListener('click', () => { tplFilter = b.dataset.cat; renderDesign(); }));
     // Plantillas
     const tg = $('#tpl-grid');
     tg.innerHTML = '';
     const cover = state.slides[0];
-    PD.templates.forEach((t) => {
+    PD.templates.filter((t) => tplFilter === 'todas' || t.cat === tplFilter || t.id === state.tpl).forEach((t) => {
       const b = document.createElement('button');
       b.className = 'tpl-card' + (t.id === state.tpl ? ' sel' : '');
       b.dataset.tpl = t.id;
@@ -783,7 +787,7 @@
     const ctx = c.getContext('2d');
     c.width = innerWidth * devicePixelRatio; c.height = innerHeight * devicePixelRatio;
     ctx.scale(devicePixelRatio, devicePixelRatio);
-    const colors = ['#8b6cff', '#2fd8f0', '#7dffb3', '#ff5fb8', '#ffd166'];
+    const colors = ['#B8492A', '#2F5D50', '#C98A1B', '#1D1A16', '#E6B9A6'];
     const parts = Array.from({ length: 180 }, () => ({
       x: innerWidth / 2 + (Math.random() - .5) * 200, y: innerHeight * .55,
       vx: (Math.random() - .5) * 16, vy: -Math.random() * 18 - 6, r: Math.random() * 6 + 4,
@@ -799,40 +803,6 @@
   }
 
   /* ================= Efectos de la página ================= */
-  // Partículas de fondo
-  (function particles() {
-    const c = $('#bg-canvas');
-    const ctx = c.getContext('2d');
-    let w, h, pts;
-    const init = () => {
-      w = c.width = innerWidth; h = c.height = innerHeight;
-      pts = Array.from({ length: Math.min(70, Math.round(w / 22)) }, () => ({ x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - .5) * .25, vy: (Math.random() - .5) * .25 }));
-    };
-    init();
-    addEventListener('resize', init);
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const tick = () => {
-      ctx.clearRect(0, 0, w, h);
-      pts.forEach((p, i) => {
-        p.x += p.vx; p.y += p.vy;
-        if (p.x < 0 || p.x > w) p.vx *= -1;
-        if (p.y < 0 || p.y > h) p.vy *= -1;
-        ctx.fillStyle = 'rgba(170,160,255,.5)';
-        ctx.fillRect(p.x, p.y, 1.6, 1.6);
-        for (let j = i + 1; j < pts.length; j++) {
-          const q = pts[j], dx = p.x - q.x, dy = p.y - q.y, d = dx * dx + dy * dy;
-          if (d < 14000) { ctx.strokeStyle = `rgba(139,108,255,${.12 * (1 - d / 14000)})`; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke(); }
-        }
-      });
-      if (!reduce) requestAnimationFrame(tick);
-    };
-    tick();
-  })();
-
-  // Brillo que sigue al cursor
-  const glow = $('.cursor-glow');
-  addEventListener('pointermove', (e) => { glow.style.left = e.clientX + 'px'; glow.style.top = e.clientY + 'px'; });
-  $$('.how').forEach((c) => c.addEventListener('pointermove', (e) => { const r = c.getBoundingClientRect(); c.style.setProperty('--mx', e.clientX - r.left + 'px'); c.style.setProperty('--my', e.clientY - r.top + 'px'); }));
   addEventListener('scroll', () => $('#nav').classList.toggle('scrolled', scrollY > 30), { passive: true });
 
   // Aparición al hacer scroll
@@ -848,12 +818,12 @@
     const deck = PD.generate(A, { level: 3, elements: PD.defaultElements(3) });
     const pick = (t) => deck.find((s) => s.type === t);
     const combos = [
-      { slide: pick('cover'), tpl: 'aurora', palette: 'medianoche', font: 'moderna' },
-      { slide: pick('stats'), tpl: 'suizo', palette: 'atardecer', font: 'geometrica' },
+      { slide: pick('cover'), tpl: 'boletin', palette: 'papel', font: 'revista' },
+      { slide: pick('stats'), tpl: 'bauhaus', palette: 'cobalto', font: 'geometrica' },
       { slide: pick('timeline'), tpl: 'editorial', palette: 'terracota', font: 'editorial' },
-      { slide: pick('quote'), tpl: 'neon', palette: 'neon', font: 'futurista' },
-      { slide: deck.find((s) => s.type === 'content' && s.layout === 'cards') || pick('content'), tpl: 'geometrico', palette: 'coral', font: 'amigable' },
-      { slide: pick('chart') || pick('summary'), tpl: 'corporativo', palette: 'oceano', font: 'tecnica' }
+      { slide: pick('quote'), tpl: 'selva', palette: 'selva', font: 'revista' },
+      { slide: deck.find((s) => s.type === 'content' && s.layout === 'cards') || pick('content'), tpl: 'retro', palette: 'durazno', font: 'amigable' },
+      { slide: pick('chart') || pick('summary'), tpl: 'ejecutivo', palette: 'tinta', font: 'urbana' }
     ].filter((c) => c.slide);
     const box = $('#deck3d');
     const W = Math.min(560, box.clientWidth * 0.86 || 520);
@@ -888,14 +858,22 @@
     setInterval(() => { k = (k + 1) % cards.length; layout(); }, 3200);
     combos.forEach((c) => PD.loadFont(PD.getFont(c.font)).then(() => $$('.slide', box).forEach((s) => PD.fitSlide(s))));
 
-    // Galería de plantillas
+    // Galería de plantillas (con filtros por categoría)
     const g = $('#gallery');
+    const gf = $('#gal-filter');
+    gf.innerHTML = PD.templateCategories.map((c, i) => `<button type="button" class="${i ? '' : 'sel'}" data-cat="${c.id}">${c.name}</button>`).join('');
+    gf.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      $$('button', gf).forEach((x) => x.classList.toggle('sel', x === b));
+      $$('.gal-item', g).forEach((it) => { it.style.display = b.dataset.cat === 'todas' || it.dataset.cat === b.dataset.cat ? '' : 'none'; });
+    });
     const sampleContent = deck.find((s) => s.type === 'content' && s.layout === 'bullets') || pick('content');
     PD.templates.forEach((t, i) => {
       const pal = PD.getPalette(t.palette), font = PD.getFont(t.font);
       const th = { tpl: t.id, pal, font, vars: PD.themeVars(pal, font), opts: { numbers: true, footer: true, emphasis: true }, deckTitle: A.title, kws: A.keywords.slice(0, 8).map((x) => x.term) };
       const item = document.createElement('div');
       item.className = 'gal-item reveal';
+      item.dataset.cat = t.cat;
       const s = i % 2 ? sampleContent : pick('cover');
       mount(item, s, deck.indexOf(s), deck.length, th);
       item.insertAdjacentHTML('beforeend', `<h4>${esc(t.name)}</h4><p>${esc(t.desc)}</p>`);
