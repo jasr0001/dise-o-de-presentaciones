@@ -12,6 +12,7 @@
   ];
 
   PD.elementList = [
+    { id: 'perApartado', name: 'Cada apartado en su diapositiva' },
     { id: 'agenda', name: 'Índice / agenda' },
     { id: 'summary', name: 'Resumen ejecutivo' },
     { id: 'dividers', name: 'Separadores de sección' },
@@ -37,6 +38,7 @@
     }[level];
     const o = {};
     PD.elementList.forEach((e) => (o[e.id] = on.includes(e.id)));
+    o.perApartado = true;
     return o;
   };
 
@@ -70,12 +72,22 @@
     const taken = new Set();
     const maxW = lv.words;
 
+    /* Preferencias pedidas en el chat */
+    const cu = opts.custom || {};
+    const norm = (t) => (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const has = (text, terms) => (terms || []).some((t) => t && norm(text).includes(norm(t)));
+    const focus = cu.focus || [], exclT = cu.excludeTerms || [], exclS = cu.excludeSections || [];
+    const eff = (x) => x.score * (has(x.text, focus) ? 1.9 : 1);
+    const allowed = (x) => !x.junk && !has(x.text, exclT);
+    const bDelta = cu.bulletsDelta || 0;
+    const perApartado = el.perApartado !== false;
+
     /* Selección de secciones por importancia, conservando el orden */
-    let sections = A.sections.filter((s) => s.sentences.length);
+    let sections = A.sections.filter((s) => s.sentences.length && !has(s.title + ' ' + (s.origTitle || ''), exclS));
     const conclusion = el.conclusions ? sections.filter((s) => s.isConclusion).pop() : null;
     let body = sections.filter((s) => s !== conclusion && !(s.isAbstract && sections.length > 2));
-    const importance = (s) => (s.rank.slice(0, 3).reduce((a, x) => a + x.score, 0)) * Math.log(2 + s.words);
-    if (body.length > lv.sections) {
+    const importance = (s) => (s.rank.slice(0, 3).reduce((a, x) => a + x.score, 0)) * Math.log(2 + s.words) * (has(s.title + ' ' + (s.origTitle || ''), focus) ? 3 : 1);
+    if (body.length > lv.sections && !perApartado) {
       const keep = new Set(body.slice().sort((a, b) => importance(b) - importance(a)).slice(0, lv.sections));
       body = body.filter((s) => keep.has(s));
     }
@@ -150,14 +162,29 @@
         const best = s.rank[0];
         group.push({ id: id(), type: 'divider', number: si + 1, title: s.title, subtitle: best ? PD.compress(best.text, 22) : '', notes: '' });
       }
-      const room = lv.bullets;
-      // Diapositivas según la extensión real de la sección: lo breve se cuenta en una sola
-      const nSlides = Math.max(1, Math.min(lv.perSection, Math.round(s.words / 130)));
-      // Prefiere elementos de lista si la sección es básicamente una lista
+      const focused = has(s.title + ' ' + (s.origTitle || ''), focus);
+      // Unidades: cada apartado (subtítulo) va en sus propias diapositivas, sin mezclarse con otros
+      const units = [];
+      if (perApartado) {
+        s.sentences.forEach((x) => {
+          const key = x.sub || '';
+          let u = units.find((v) => v.sub === key);
+          if (!u) units.push((u = { sub: key, sentences: [] }));
+          u.sentences.push(x);
+        });
+      } else units.push({ sub: null, sentences: s.sentences });
+      let firstUnit = true;
+      units.forEach((unit) => {
+      const uWords = unit.sentences.reduce((a, x) => a + wc(x.text), 0);
+      if (!unit.sentences.some(allowed)) return;
+      const room = Math.max(1, (perApartado && units.length > 1 ? Math.max(2, lv.bullets - 1) : lv.bullets) + bDelta + (focused ? 1 : 0));
+      // Diapositivas según la extensión real: lo breve se cuenta en una sola
+      const nSlides = Math.max(1, Math.min(lv.perSection + (focused ? 1 : 0), Math.round(uWords / 130)));
       const fits = (x) => (wc(x.text) <= maxW * 1.25 ? 1 : wc(x.text) <= maxW * 1.7 ? 0.8 : 0.6);
-      const pool = (el.quote ? s.rank.filter((x) => !x.isQuote) : s.rank).filter((x) => !x.junk)
-        .slice().sort((a, b) => b.score * fits(b) - a.score * fits(a));
+      const pool = unit.sentences.filter((x) => allowed(x) && !(el.quote && x.isQuote))
+        .slice().sort((a, b) => eff(b) * fits(b) - eff(a) * fits(a));
       const chosen = pickSentences(pool, room * nSlides, taken).sort((a, b) => a.pos - b.pos);
+      if (!chosen.length) return;
       // Reparte las frases en diapositivas respetando un presupuesto de palabras para que nunca se desborden
       const budget = lv.budget;
       const chunks = [];
@@ -201,19 +228,21 @@
             texts.splice(3);
           } else layout = 'bullets';
         }
-        const image = el.images && k === 0 && s.images[0] ? s.images[0] : null;
+        const image = el.images && k === 0 && firstUnit && s.images[0] ? s.images[0] : null;
         if (image) layout = 'image';
-        const sub = chunk[0].sub && chunk[0].sub !== s.title ? chunk[0].sub : '';
+        const sub = (perApartado ? unit.sub : chunk[0].sub) || '';
         group.push({
           id: id(), type: 'content', layout,
           title: s.title,
-          kicker: sub || (total > 1 ? `${lab.part} ${k + 1}/${total}` : (el.dividers ? '' : `${String(si + 1).padStart(2, '0')}`)),
+          kicker: sub && sub !== s.title ? sub : (total > 1 ? `${lab.part} ${k + 1}/${total}` : (el.dividers ? '' : `${String(si + 1).padStart(2, '0')}`)),
           statement,
           bullets: texts,
           image: image ? { src: image.src, alt: image.alt || '' } : null,
-          notes: chunk.map((x) => x.text).join(' ') + (s.rank.length > chunk.length && lv.id >= 3 ? '\n\n' + s.rank.filter((x) => !chunk.includes(x)).slice(0, 2).map((x) => x.text).join(' ') : '')
+          notes: chunk.map((x) => x.text).join(' ') + (s.rank.length > chunk.length && lv.id >= 3 ? '\n\n' + s.rank.filter((x) => !chunk.includes(x) && !x.junk).slice(0, 2).map((x) => x.text).join(' ') : '')
         });
       }
+      firstUnit = false;
+      });
       // Imágenes adicionales y tablas de esta sección
       if (el.images) s.images.slice(1, lv.id >= 4 ? 4 : 2).forEach((im, n) => group.push({ id: id(), type: 'image', title: s.title, image: { src: im.src, alt: im.alt || '' }, caption: im.alt || `${lab.figure} ${n + 2}`, notes: '' }));
       if (el.tables) s.tables.slice(0, lv.id >= 4 ? 2 : 1).forEach((t) => {
@@ -233,6 +262,14 @@
     });
     specials.forEach((sp) => flat.push(sp.slide));
     slides.push(...flat);
+
+    /* Temas pedidos en el chat: una diapositiva por tema con las frases que lo tratan */
+    (cu.addTopics || []).forEach((tp) => {
+      const terms = [tp.term].concat(tp.alt || []);
+      const pool = A.sections.flatMap((x) => x.sentences).filter((x) => allowed(x) && has(x.text, terms)).sort((a, b) => b.score - a.score);
+      const pick = pickSentences(pool, Math.max(2, lv.bullets + bDelta), new Set()).sort((a, b) => a.section - b.section || a.pos - b.pos);
+      if (pick.length) slides.push({ id: id(), type: 'content', layout: 'bullets', title: tp.title || (tp.term.charAt(0).toUpperCase() + tp.term.slice(1)), kicker: '', statement: '', bullets: pick.map((x) => PD.compress(x.text, maxW)), notes: pick.map((x) => x.text).join(' ') });
+    });
 
     /* Glosario */
     if (el.glossary && A.glossary.length >= 2) {
@@ -261,6 +298,26 @@
     /* Cierre */
     if (el.closing) {
       slides.push({ id: id(), type: 'closing', title: lab.thanks, subtitle: lab.questions, kicker: opts.title || A.title, author: opts.author || A.author || '', keywords: A.keywords.slice(0, 5).map((k) => k.term), notes: '' });
+    }
+
+    // Número máximo de diapositivas pedido en el chat: se quitan primero los extras y luego lo menos importante
+    if (cu.maxSlides && slides.length > cu.maxSlides) {
+      const order = ['concepts', 'chart', 'references', 'glossary', 'timeline', 'quote', 'divider', 'agenda', 'image', 'table', 'stats', 'summary'];
+      for (const t of order) {
+        for (let i = slides.length - 1; i >= 0 && slides.length > cu.maxSlides; i--) if (slides[i].type === t) slides.splice(i, 1);
+        if (slides.length <= cu.maxSlides) break;
+      }
+      const scoreOf = (sl) => (sl.bullets || []).length;
+      while (slides.length > cu.maxSlides) {
+        const cand = slides.map((sl, i) => ({ sl, i })).filter((c) => c.sl.type === 'content');
+        if (cand.length <= 1) break;
+        // Se quita la de menos contenido, manteniendo al menos una por sección
+        cand.sort((a, b) => scoreOf(a.sl) - scoreOf(b.sl));
+        const titles = {};
+        cand.forEach((c) => (titles[c.sl.title] = (titles[c.sl.title] || 0) + 1));
+        const victim = cand.find((c) => titles[c.sl.title] > 1) || cand[0];
+        slides.splice(victim.i, 1);
+      }
     }
 
     // Ninguna diapositiva supera el presupuesto de palabras: lo que sobra pasa a las notas del orador

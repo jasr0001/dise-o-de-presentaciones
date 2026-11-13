@@ -18,6 +18,8 @@
     font: prefs.font || 'revista',
     level: prefs.level || 2,
     outLang: prefs.outLang || 'es',
+    custom: { maxSlides: 0, focus: [], excludeSections: [], excludeTerms: [], addTopics: [], bulletsDelta: 0 },
+    termAlt: {},
     elements: null,
     opts: { numbers: true, footer: true, emphasis: true, notes: true },
     meta: { title: '', subtitle: null, author: '', date: '' },
@@ -197,6 +199,9 @@
       goStep(1, false);
       if (A.translateFailed) toast('No se pudo traducir (revisa tu conexión a internet). Puedes editar los textos o volver a intentarlo.', 'err', 7000);
       else toast(`¡Listo! ${state.slides.length} diapositivas generadas${A.srcLang !== state.outLang ? ' y traducidas al ' + LANG_NAMES[state.outLang] : ''}.`);
+      const pre = ($('#pre-request') && $('#pre-request').value.trim()) || '';
+      if (pre) { openChat(); sendChat(pre); $('#pre-request').value = ''; }
+      $('#chat-fab').classList.remove('hidden');
     } catch (err) {
       console.error(err);
       proc.classList.add('hidden');
@@ -253,7 +258,7 @@
     A.labels = PD.labels[tgt] || PD.labels.es;
     A.title = A._orig.title;
     A.subtitle = A._orig.subtitle;
-    A.sections.forEach((x, i) => (x.title = A._orig.sections[i]));
+    A.sections.forEach((x, i) => { x.title = A._orig.sections[i]; x.origTitle = A._orig.sections[i]; });
     A.keywords.forEach((k, i) => (k.term = A._orig.keywords[i]));
     A.translateFailed = false;
     if (A.srcLang === tgt) return;
@@ -271,9 +276,12 @@
 
   let translateWarned = false;
   async function regenerate(onProgress) {
+    const exp = (list) => list.flatMap((t) => [t].concat(state.termAlt[t] || []));
+    const cu = state.custom;
     state.slides = PD.generate(state.analysis, {
       level: state.level,
       elements: state.elements,
+      custom: { maxSlides: cu.maxSlides, bulletsDelta: cu.bulletsDelta, focus: exp(cu.focus), excludeSections: exp(cu.excludeSections), excludeTerms: exp(cu.excludeTerms), addTopics: cu.addTopics.map((t) => ({ term: t, alt: state.termAlt[t] || [] })) },
       title: state.meta.title,
       subtitle: state.meta.subtitle,
       author: state.meta.author,
@@ -925,6 +933,105 @@
     let t;
     document.fonts.addEventListener('loadingdone', () => { clearTimeout(t); t = setTimeout(() => $$('.thumb > .slide').forEach((el) => PD.fitSlide(el)), 120); });
   }
+
+  /* ================= Chat: el cliente pide cambios con sus palabras ================= */
+  const chat = $('#chat');
+  const chatLog = $('#chat-log');
+  function chatSay(who, html) {
+    const m = document.createElement('div');
+    m.className = 'msg ' + who;
+    m.innerHTML = html;
+    chatLog.appendChild(m);
+    chatLog.scrollTop = chatLog.scrollHeight;
+    return m;
+  }
+  function chatChips(list) {
+    $('#chat-chips').innerHTML = list.map((t) => `<button type="button">${esc(t)}</button>`).join('');
+  }
+  function openChat() {
+    chat.classList.remove('hidden');
+    $('#chat-fab').classList.add('open');
+    if (!chatLog.children.length) {
+      chatSay('bot', 'Hola. Dime con tus palabras qué quieres en tu presentación y la ajusto. Por ejemplo: <i>«quiero 10 diapositivas»</i>, <i>«enfócate en los resultados»</i> o <i>«quita la cronología»</i>.');
+      chatChips(PD.assistantExamples.slice(0, 6));
+    }
+    setTimeout(() => $('#chat-input').focus(), 50);
+  }
+  $('#chat-fab').addEventListener('click', () => (chat.classList.contains('hidden') ? openChat() : (chat.classList.add('hidden'), $('#chat-fab').classList.remove('open'))));
+  $('#chat-close').addEventListener('click', () => { chat.classList.add('hidden'); $('#chat-fab').classList.remove('open'); });
+  $('#chat-chips').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) sendChat(b.textContent); });
+  $('#chat-form').addEventListener('submit', (e) => { e.preventDefault(); const v = $('#chat-input').value.trim(); if (v) { $('#chat-input').value = ''; sendChat(v); } });
+
+  let chatBusy = false;
+  async function sendChat(text) {
+    if (chatBusy) return;
+    chatSay('me', esc(text));
+    const A = state.analysis;
+    if (!A) { chatSay('bot', 'Primero sube un documento (o prueba el artículo de ejemplo) y luego te ayudo a ajustarlo.'); return; }
+    const r = PD.interpret(text, { sections: A.sections.map((s) => s.title).concat(A.sections.map((s) => s.origTitle || '')).filter(Boolean) });
+    if (!r.actions.length) { chatSay('bot', esc(r.reply)); chatChips(PD.assistantExamples); return; }
+    if (state.dirty && !window.confirm('Aplicar este cambio volverá a generar la presentación y se perderán tus ediciones manuales. ¿Continuar?')) { chatSay('bot', 'De acuerdo, no cambié nada.'); return; }
+    chatBusy = true;
+    const thinking = chatSay('bot', '<span class="dots"><i></i><i></i><i></i></span>');
+    try {
+      const cu = state.custom;
+      let regen = false, langTo = null;
+      const pal = r.actions.find((x) => x.type === 'palette'), fnt = r.actions.find((x) => x.type === 'font');
+      for (const x of r.actions) {
+        switch (x.type) {
+          case 'reset': state.custom = { maxSlides: 0, focus: [], excludeSections: [], excludeTerms: [], addTopics: [], bulletsDelta: 0 }; state.elements = PD.defaultElements(state.level); regen = true; break;
+          case 'maxSlides': cu.maxSlides = x.n; regen = true; break;
+          case 'focus': if (!cu.focus.includes(x.term)) cu.focus.push(x.term); regen = true; break;
+          case 'excludeSection': cu.excludeSections.push(x.term); regen = true; break;
+          case 'excludeTerm': cu.excludeTerms.push(x.term); regen = true; break;
+          case 'addTopic': if (!cu.addTopics.includes(x.term)) cu.addTopics.push(x.term); regen = true; break;
+          case 'bullets': cu.bulletsDelta = Math.max(-2, Math.min(2, cu.bulletsDelta + x.d)); regen = true; break;
+          case 'level': state.level = x.id; regen = true; break;
+          case 'levelDelta': state.level = Math.max(1, Math.min(4, state.level + x.d)); regen = true; break;
+          case 'element': state.elements[x.id] = x.on; regen = true; break;
+          case 'notes': state.opts.notes = x.on; $('#o-notes').checked = x.on; regen = true; break;
+          case 'meta': state.meta[x.field] = x.value; regen = true; break;
+          case 'template': { const t = PD.getTemplate(x.id); state.tpl = t.id; if (!pal) state.palette = t.palette; if (!fnt) state.font = t.font; break; }
+          case 'palette': state.palette = x.id; break;
+          case 'font': state.font = x.id; break;
+          case 'lang': langTo = x.id; break;
+        }
+      }
+      savePrefs();
+      // Los temas se buscan también en el idioma del documento
+      const terms = [...cu.focus, ...cu.excludeSections, ...cu.excludeTerms, ...cu.addTopics].filter((t) => !state.termAlt[t]);
+      if (terms.length && A.srcLang !== 'es') {
+        try {
+          const tr = await PD.translateTexts(terms, 'es', A.srcLang);
+          const tr2 = state.outLang !== 'es' && state.outLang !== A.srcLang ? await PD.translateTexts(terms, 'es', state.outLang) : terms;
+          terms.forEach((t, i) => (state.termAlt[t] = [tr[i], tr2[i]].filter((v) => v && v !== t)));
+        } catch (e) { terms.forEach((t) => (state.termAlt[t] = [])); }
+      }
+      if (langTo && langTo !== state.outLang) {
+        const btn = $(`.lp[data-lang="${langTo}"]`);
+        if (btn) btn.click();
+        await new Promise((res) => { const iv = setInterval(() => { if (!document.body.classList.contains('busy')) { clearInterval(iv); res(); } }, 150); setTimeout(() => { clearInterval(iv); res(); }, 60000); });
+      }
+      if (regen) { state.dirty = false; await regenerateBusy(); } else await paginateDeck(true);
+      thinking.remove();
+      chatSay('bot', esc(r.reply) + ` <b>Ahora tiene ${state.slides.length} diapositivas.</b>`);
+      chatChips(['Ver la presentación', 'Deshaz los cambios del chat', 'Hazla más breve', 'Menos texto, más visual']);
+      if (state.step < 3) { unlock(4); goStep(3, false); }
+      else if (state.step === 3) renderContent();
+      else if (state.step === 4) renderEditor();
+      else if (state.step === 2) renderDesign();
+    } catch (e) {
+      console.error(e);
+      thinking.remove();
+      chatSay('bot', 'Algo falló al aplicar el cambio. Inténtalo de nuevo con otras palabras.');
+    } finally { chatBusy = false; }
+  }
+  // «Ver la presentación» lleva al editor
+  $('#chat-chips').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (b && b.textContent === 'Ver la presentación') { e.stopImmediatePropagation(); unlock(4); goStep(4); }
+  }, true);
+  PD.sendChat = sendChat;
 
   // Avisos de actualización (ver index.html)
   window.__luminaHasWork = () => !!state.analysis;
