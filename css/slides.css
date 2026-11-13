@@ -361,9 +361,9 @@
 .tpl-geometrico .s-list .mk { width: 18px; height: 18px; box-shadow: none; margin-top: .3em; }
 .tpl-geometrico .s-list li:nth-child(3n+2) .mk { border-radius: 4px; transform: rotate(45deg); }
 .tpl-geometrico .s-list li:nth-child(3n+3) .mk { border-radius: 0; width: 0; height: 0; background: transparent; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 18px solid var(--a3); }
-.tpl-geometrico .s-cards .card { border-radius: 30px; border: 3px solid var(--ink); box-shadow: 8px 8px 0 var(--ink); }
-.tpl-geometrico .s-stats .stat { border-radius: 30px; border: 3px solid var(--ink); box-shadow: 8px 8px 0 var(--a1); }
-.tpl-geometrico .s-highlight .stmt { border-radius: 30px; box-shadow: 10px 10px 0 var(--ink); }
+.tpl-geometrico .s-cards .card { border-radius: 30px; border: 3px solid var(--ink); border-right-width: 9px; border-bottom-width: 9px; box-shadow: none; }
+.tpl-geometrico .s-stats .stat { border-radius: 30px; border: 3px solid var(--ink); border-right: 9px solid var(--a1); border-bottom: 9px solid var(--a1); box-shadow: none; }
+.tpl-geometrico .s-highlight .stmt { border-radius: 30px; box-shadow: none; border-right: 10px solid var(--ink); border-bottom: 10px solid var(--ink); }
 .tpl-geometrico .s-summary li { border-radius: 22px; border: 2px solid var(--ink); }
 .tpl-geometrico .s-inner { right: 150px; }
 .tpl-geometrico .s-thanks { font-weight: 900; }

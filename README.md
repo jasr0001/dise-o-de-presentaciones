@@ -34,7 +34,7 @@ Todo lo necesario está dentro del repositorio, sin depender de servicios extern
 ## Flujo
 
 1. **Documento** — arrastra o selecciona un archivo, pega texto o prueba el artículo de ejemplo. Lumina muestra lo que encontró: palabras, secciones, cifras, fechas, idioma y conceptos clave.
-2. **Diseño** — 8 plantillas (Aurora, Editorial, Suizo, Corporativo, Neón, Académico, Geométrico, Minimal), 13 paletas + paleta personalizada, 10 combinaciones tipográficas. Vista previa en vivo.
+2. **Diseño** — 38 plantillas con filtros por estilo (formales, editoriales, minimalistas, creativas, cálidas y oscuras), 27 paletas + paleta personalizada y 17 combinaciones tipográficas. Vista previa en vivo.
 3. **Contenido** — 4 niveles de detalle (Esencial, Equilibrado, Detallado, Exhaustivo) con el número estimado de diapositivas, y control de cada elemento: índice, resumen ejecutivo, separadores, datos clave, gráfico, cronología, cita, conceptos, imágenes, tablas, glosario, conclusiones, referencias y cierre. Título, subtítulo, autor y fecha editables.
 4. **Editar y exportar** — edita cualquier texto directamente sobre la diapositiva, reordena arrastrando, duplica, elimina, cambia la distribución, añade puntos, escribe notas del orador y deshaz con Ctrl+Z. Presenta a pantalla completa (flechas, N para notas, cronómetro) y descarga:
    - **PDF de alta fidelidad** (1920–3840 px, opcionalmente con páginas de notas).
@@ -58,7 +58,9 @@ PDF, DOCX/DOCM/DOTX, DOC (extracción heurística), PPTX, ODT/ODP/ODS, EPUB, RTF
 ```
 index.html          Interfaz
 css/app.css         Estilos de la aplicación
-css/slides.css      Estilos de las 8 plantillas (1280×720)
+css/slides.css      Estilos base y 8 plantillas originales (1280×720)
+css/slides-extra.css  30 plantillas adicionales (motivos y variantes)
+js/templates-extra.js Plantillas, paletas y tipografías adicionales
 js/parsers.js       Lectura de formatos
 js/analyzer.js      Análisis del texto
 js/generator.js     Guion de diapositivas por nivel de detalle
